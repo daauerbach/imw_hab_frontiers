@@ -1,0 +1,1225 @@
+---
+title: "Frontiers manuscript figures and tables"
+author: "dan.auerbach@dfw.wa.gov"
+date: "`r Sys.Date()`"
+format:
+  docx:
+    reference-doc: /Users/auerbdaa/O/code/quarto_template.docx
+  html:
+    embed-resources: true
+    theme: yeti 
+    code-fold: true
+    toc: true
+    toc-location: left
+    grid:
+      sidebar-width: 180px
+      body-width: 1100px
+      margin-width: 20px
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 10)
+
+library("tidyverse", quietly = T)
+library("sf")
+library("patchwork")
+library("gt")
+theme_set(theme_minimal()) 
+
+# dir_data_common <- "~/T/DFW-Team WDFW Watershed Synthesis - data_common"
+# epsg <- 2927 #WA state standard; NAD83(HARN)/ft
+
+#this still includes the full transects and lwd tables
+#can reduce file size if desired by dropping to site_meta, site_year, strm_year objects
+load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/free_mscpt/frontiers_imw_hab_mscpt_fig_tab_250116.RData")
+
+
+#### 2024 obs mostly/all complete now except for BBC?
+as_tibble(sf_site_year) |> filter(year == 2024) |> count(cmplx_strm)
+#this version includes filled NAs: site_year |> filter(year == 2024) |> count(cmplx_strm)
+site_year |> filter(cmplx_strm == "HC_Big Beef Creek" & year == 2024) |> print(n=Inf)
+
+#will rebuild after checking with Will and Kevin
+strm_year <- strm_year |> 
+  filter(
+    !(cmplx_strm == "HC_Big Beef Creek" & year == 2024)
+  )
+sf_site_year <- sf_site_year |> 
+  filter(
+    !(cmplx_strm == "HC_Big Beef Creek" & year == 2024)
+  )
+
+
+```
+
+
+# variation
+
+## magnitude of whole stream interannual
+
+Axis and panel/facet labeling are pending choices on the overall plot style.
+
+```{r d_whole_stream_mag}
+d <- strm_year |> #glimpse()
+  select(cmplx_strm, year, ends_with("_mean"), -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean) |> 
+  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(-c(cmplx_strm, year))
+
+```
+
+### example box-whisker
+
+```{r gg_strm_year_boxes}
+d |> 
+  ggplot(aes(color = cmplx_strm)) +
+  geom_jitter(aes(cmplx_strm, value), position = position_jitter(width = 0.2), size = 0.5, show.legend = F) +
+  geom_boxplot(aes(cmplx_strm, value), fill = NA, outliers = F, show.legend = F) +
+  geom_vline(xintercept = c(4.5, 7.5), linetype = 3) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  scale_x_discrete(guide = guide_axis(angle = 270)) +
+  facet_wrap(~name, ncol = 3, scales = "free_y") +
+  labs(
+    x = "", y = "",
+    title = "Magnitude of whole stream interannual variation",
+    subtitle = "Distributions show per-year means across sites per-stream"
+  )
+
+```
+
+### example ridgeline
+
+```{r gg_strm_year_ridges}
+d |> 
+  ggplot() +
+  #not good unless scale <= 1: geom_hline(yintercept = c(3.5, 6.5), linetype = 3) +
+  ggridges::geom_density_ridges(
+    mapping = aes(value, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm), 
+    #stat = "binline", bins = 20,
+    scale = 1.8,
+    alpha = 0.7,
+    show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_wrap(~name, ncol = 3, scales = "free_x") +
+  labs(
+    x = "", y = "",
+    title = "Magnitude of whole stream interannual variation",
+    subtitle = "Distributions show per-year means across sites per-stream"
+  )
+
+```
+
+### temporal sample mean & SD & CV
+
+```{r gg_strm_year_error_cvbar}
+d_smry <- d |> 
+  summarise(
+    across(
+      value,
+      list(
+        mean = ~mean(.[is.finite(.)], na.rm = T),
+        sd = ~sd(.[is.finite(.)], na.rm = T)
+        ), .names = "{fn}"),
+    .by = c(cmplx_strm, name)
+  ) |> 
+  mutate(cv = sd / mean)
+
+d_smry |> 
+  ggplot(aes(color = cmplx_strm, x = mean, y = fct_rev(cmplx_strm))) +
+  geom_hline(yintercept = c(3.5, 6.5), linetype = 3) +
+  geom_errorbarh(aes(xmin = mean - sd, xmax = mean + sd), height = 0.5, show.legend = F) +
+  geom_point(show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_wrap(~name, ncol = 3, scales = "free_x") +
+  labs(
+    x = "", y = "",
+    title = "Magnitude of whole stream interannual variation",
+    subtitle = "Mean and SD through years of per-year means across sites"
+  )
+
+d_smry |> 
+  ggplot(aes(color = cmplx_strm, fill = cmplx_strm, x = fct_rev(cmplx_strm), y = cv)) +
+  geom_vline(xintercept = c(3.5, 6.5), linetype = 3) +
+  geom_hline(yintercept = 0.5, linetype = 2) +
+  geom_col(width = 0.7, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  scale_x_discrete(guide = guide_axis(angle = 270)) +
+  facet_wrap(~name, ncol = 3, scales = "fixed") +
+  labs(
+    x = "", y = "",
+    title = "Magnitude of whole stream interannual variation",
+    subtitle = "CV through years of per-year means across sites *NOTE CV is NUMERICALLY QUESTIONABLE FOR PCT_POOLS/GRAVEL*"
+  )
+
+```
+
+
+## whole stream means of per-site interannual ranges
+
+```{r d_whole_strm_site_ranges}
+d <- site_meta |> #glimpse()
+  select(cmplx_strm, site, 
+         ends_with("min"), ends_with("max"), 
+         -starts_with("year"), 
+         -contains("lwd_all"), 
+         -vlwd_min, -vlwd_max #use density not counts 
+         ) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  mutate(
+    m = str_sub(name, -3,-1), # m = map_chr(meas, ~last(str_split_1(.x,"_"))),
+    name = str_remove(name, paste0("_",m)) # meas = map2_chr(meas, m, ~str_remove(.x, paste0("_",.y)))
+  ) |> 
+  pivot_wider(names_from = m, values_from = value) |> 
+  mutate(
+    site_rng = max - min
+  )
+
+```
+
+### ridgeline of site all-years range
+
+```{r gg_site_range_ridges}
+d |> 
+  drop_na(site_rng) |> filter(is.finite(site_rng)) |> 
+  ggplot() +
+  ggridges::geom_density_ridges(
+    mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm), 
+    scale = 1.8,
+    alpha = 0.7,
+    show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_wrap(~name, ncol = 3, scales = "free_x") +
+  labs(
+    x = "", y = "",
+    title = "Stream network variation in temporal variability",
+    subtitle = "Distributions show per-site interannual ranges"
+  )
+```
+
+### pointrange of mean +/- sd across site all-years range
+
+```{r gg_stream_mean_of_site_range}
+#the network/spatial mean and sd of the site temporal range
+d |> 
+  summarise(
+    across(
+      site_rng, 
+      list(
+        mean = ~mean(.[is.finite(.)], na.rm = T),
+        sd = ~sd(.[is.finite(.)], na.rm = T)
+        )),
+    .by = c(cmplx_strm, name)
+  ) |> 
+  ggplot(aes(cmplx_strm, site_rng_mean, color = cmplx_strm)) + 
+  geom_pointrange(aes(ymin = site_rng_mean - site_rng_sd, ymax = site_rng_mean + site_rng_sd), show.legend = F) + 
+  scale_color_manual(values = pal_cmplx_strm) + 
+  scale_x_discrete(guide = guide_axis(angle = 270)) +
+  facet_wrap(~name, scales = "free") + 
+  labs(x = "", y = "Per-site range over years",
+       title = "Average per-site ranges over years")
+```
+
+these plots are strictly supplementary but perhaps interesting for reference
+
+```{r gg_site_range_horiz_cascade}
+d |>
+  split(~name) |>
+  map(
+    ~.x |> 
+      drop_na(min) |> 
+      ggplot() +
+      geom_linerange(
+        aes(xmin = min, xmax = max,
+            y = fct_reorder(site, min, .fun = "min"),
+            color = cmplx_strm)
+        , show.legend = F
+      ) +
+      scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+      labs(y = "", subtitle = .x$name[1])
+  )  # wrap_plots(nrow = 1)
+
+```
+
+
+# trends
+
+```{r d_strm_year_trends}
+d <- strm_year |> #glimpse()
+  select(cmplx_strm, year, ends_with("_mean"), -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean) |> 
+  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
+  rename_with(~str_remove(., "_mean")) 
+```
+
+
+## whole stream Mann-Kendall 
+
+Detects consistent directional change (monotonic increase or decrease), this answers a question like "Did the proportion of pools throughout the stream network increase over the study duration?".
+
+Some of these whole stream time series of yearly measures show temporal autocorrelation.
+
+Per Google AI overview for search string "autocorrelation correction mann kendall": "Autocorrelation violates the assumption of independence in the MK test, inflating the probability of falsely detecting a trend (Type I error). Positive autocorrelation can lead to an overestimation of the trend significance, while negative autocorrelation can lead to an underestimation."
+
+After examining agreement across a few different packages (`Kendall::MannKendall`, `trend::mk.test`, `modifiedmk::mmkh`), I'm using [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/). 
+
+Kong D, Song H (2024). _rtrend: Trend Estimating Tools_. R package version 0.1.5, <https://CRAN.R-project.org/package=rtrend>.
+
+which implements methods in Hamed and Rao (1998).
+
+Hamed, K. H., & Rao, A. R. (1998). A modified Mann-Kendall trend test for autocorrelated data. Journal of hydrology, 204(1-4), 182-196. <doi:10.1016/S0022-1694(97)00125-X>.
+
+```{r gt_strm_year_mk}
+#https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
+
+strm_year_mk <- d |> 
+  summarise(
+    across(
+        where(is.double),
+        list(
+          # mk_tau = ~Kendall::MannKendall(.)$tau,
+          # mk_pval = ~Kendall::MannKendall(.)$sl,
+          # mk2pval = ~trend::mk.test(na.omit(.))$p.value,
+          # mk4 = ~list(modifiedmk::mmkh(.)),
+          # mk5 = ~list(modifiedmk::mmky(.))
+          
+          mk = ~list(rtrend::mkTrend(.))
+          )
+        ),
+      .by = c(cmplx_strm)
+    ) |> 
+  unnest_wider(ends_with("_mk"), names_sep = ":") |> 
+  select(cmplx_strm, ends_with("pval"), ends_with("slp"))
+
+strm_year_mk_gt <- strm_year_mk |> 
+  arrange(cmplx_strm) |> 
+  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
+  select(cmplx_desc, cmplx_strm, 
+         ends_with("slp"), ends_with("pval"), #so that estimate is left of pval
+         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
+         ) |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "Mann-Kendall trend test results for interannual change in habitat measures"
+    ) |> 
+  fmt_number(ends_with("pval"), decimals = 2) |> 
+  fmt_number(ends_with("slp"), decimals = 4) |> 
+  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", starts_with("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", starts_with("pct_pool")) |> 
+  tab_spanner("Pool depth", starts_with("pool_depth")) |> 
+  tab_spanner("VLWD/100m", starts_with("vlwd")) |> 
+  cols_label_with(ends_with("slp"), ~"Sen's") |> 
+  cols_label_with(ends_with("pval"), ~"p-val") |> 
+  tab_style(style = cell_borders("left"), locations = cells_body(columns = ends_with("slp"))) |> 
+  tab_style_body(
+    style = list(cell_text(color = "red")), 
+    columns = c(ends_with("slp"), ends_with("pval")),
+    fn = \(x) x < 0 
+  ) |> 
+  tab_style_body(
+    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
+    columns = c(ends_with("pval")),
+    fn = \(x) x <= 0.05 
+  )
+
+
+strm_year_mk_gg <- strm_year_mk |> 
+  pivot_longer(-cmplx_strm) |> 
+  separate(name, into = c("name","stat"), sep = "_mk:") |> 
+  pivot_wider(names_from = stat, values_from = value) |> 
+  filter(pval < 0.05) |> 
+  mutate(
+    gg = map2(
+      cmplx_strm, name,
+      ~strm_year |> 
+        filter(cmplx_strm == .x) |> 
+        select(cmplx_strm, year, yval = all_of(paste0(.y,"_mean"))) |> 
+        ggplot(aes(year, yval, color = cmplx_strm)) + 
+        geom_line(linetype = 2, show.legend = F) + 
+        geom_point(show.legend = F) + 
+        #geom_smooth(se = F, show.legend = F) + 
+        scale_color_manual(values = pal_cmplx_strm) +
+        labs(x = "", y = .y, subtitle = .x)
+    )
+  ) |> 
+  pull(gg) |> 
+  wrap_plots(ncol = 2) +
+  plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
+
+# #layout here is finicky but not fussing for now
+# wrap_table(strm_year_mk_gt, panel = "full") / strm_year_mk_gg + 
+#   plot_annotation(tag_levels = "a")
+
+strm_year_mk_gt
+
+strm_year_mk_gg
+```
+
+## whole stream KPSS
+
+I think we could leave this out or relegate to Supplementary, but I'm including for now as a reinforcement of the finding that few whole-stream series exhibit linear trends.
+
+Detects non-stationarity, typically in the context of ARIMA-type time series models to determine the need for differencing to remove trends.
+
+Null hypothesis of the test is stationarity, so p<0.05 rejects (i.e., in favor of linear trend; see [https://otexts.com/fpp3/stationarity.html](https://otexts.com/fpp3/stationarity.html))
+
+```{r strm_year_ts_kpss}
+# library(tsibble)
+# library(feasts) #loads: library(fabletools)
+# library(fable)
+#https://feasts.tidyverts.org/
+
+strm_year_ts <- d |> 
+  tsibble::as_tsibble(key = cmplx_strm, index = year)
+
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = quantile)
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = list(quantile, mu = mean))
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feat_acf)
+# # # STL (via loess) not appropriate for yearly data, with no meaningful 'season'?
+# # #also "trend_strength" is relative to 'seasonal' component, not really "slope magnitude"
+# # strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feasts::feat_stl)
+# 
+# #gravel MK signif (pos) for Deep and E-twin
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = unitroot_kpss) |> arrange(kpss_pvalue)
+
+strm_year_ts_kpss <- strm_year_ts |>
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  split(~name) |> 
+  map(
+    ~fabletools::features(.x, value, features = feasts::unitroot_kpss) |> 
+      mutate(name = .x$name[1])
+      #rename_with(~paste(.x$name[1],.,sep = "_"), starts_with("kpss"))
+    ) |> 
+  bind_rows()
+
+strm_year_ts_kpss |> 
+  # filter(kpss_pvalue < 0.05)
+  pivot_wider(names_from = name, values_from = starts_with("kpss")) |> 
+  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
+  select(cmplx_desc, cmplx_strm, 
+         #contains("stat"), contains("pval"), #so that estimate is left of pval
+         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
+  ) |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "KPSS test results for interannual stationarity in habitat measures"
+  ) |> 
+  fmt_number(contains("pvalue"), decimals = 2) |> 
+  fmt_number(contains("stat"), decimals = 2) |> 
+  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
+  tab_spanner("Pool depth", contains("pool_depth")) |> 
+  tab_spanner("VLWD/100m", contains("vlwd")) |> 
+  cols_label_with(contains("stat"), ~"Stat.") |> 
+  cols_label_with(contains("pval"), ~"p-val") |> 
+  tab_style(style = cell_borders("left"), locations = cells_body(columns = contains("stat"))) |> 
+  tab_style_body(
+    style = list(cell_text(color = "red")), 
+    columns = c(contains("stat"), contains("pvalue")),
+    fn = \(x) x < 0 
+  ) |> 
+  tab_style_body(
+    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
+    columns = c(contains("pvalue")),
+    fn = \(x) x <= 0.05 
+  )
+
+```
+
+## GAM regressions on year
+
+This is included somewhat speculatively. We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as 'trends'. This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
+
+### gravel (beta)
+
+```{r gam_gravel}
+#?mgcv::family.mgcv
+d |> 
+  split(~cmplx_strm) |>
+  map(
+    \(df) {
+      f = mgcv::gam(pct_gravel ~ s(year, bs = "cs"), data = df, family = mgcv::betar, method = "REML")
+      f$cmplx_strm = df$cmplx_strm[1]
+      return(f)
+    }) |> 
+  map(
+    ~bind_cols(
+      broom::glance(.x), 
+      broom::tidy(.x) 
+    ) |> mutate(cmplx_strm = .x$cmplx_strm)
+  ) |> bind_rows() |> 
+  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
+```
+
+### pools (beta)
+
+```{r gam_pools}
+d |> 
+  split(~cmplx_strm) |>
+  map(
+    \(df) {
+      f = mgcv::gam(pct_pools ~ s(year, bs = "cs"), data = df, family = mgcv::betar, method = "REML")
+      f$cmplx_strm = df$cmplx_strm[1]
+      return(f)
+    }) |> 
+  map(
+    ~bind_cols(
+      broom::glance(.x), 
+      broom::tidy(.x) 
+    ) |> mutate(cmplx_strm = .x$cmplx_strm)
+  ) |> bind_rows() |> 
+  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
+```
+
+### width-depth (gamma)
+
+```{r gam_w_d}
+#unclear best family - this is a positive real ratio
+#perhaps could use 'nb' but 'Gamma' seemed to have better fits
+d |> 
+  split(~cmplx_strm) |>
+  map(
+    \(df) {
+      f = mgcv::gam(bankfull_W_D ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
+      f$cmplx_strm = df$cmplx_strm[1]
+      return(f)
+    }) |> 
+  map(
+    ~bind_cols(
+      broom::glance(.x), 
+      broom::tidy(.x) 
+    ) |> mutate(cmplx_strm = .x$cmplx_strm)
+  ) |> bind_rows() |> 
+  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
+```
+
+### VLWD (gamma)
+
+```{r gam_vlwd}
+#also starting with Gamma
+#could use 'nb' with survey length as offset 
+d |> 
+  split(~cmplx_strm) |>
+  map(
+    \(df) {
+      f = mgcv::gam(vlwd_per100 ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
+      f$cmplx_strm = df$cmplx_strm[1]
+      return(f)
+    }) |> 
+  map(
+    ~bind_cols(
+      broom::glance(.x), 
+      broom::tidy(.x) 
+    ) |> mutate(cmplx_strm = .x$cmplx_strm)
+  ) |> bind_rows() |> 
+  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
+```
+
+### pool depth (gamma)
+
+```{r gam_pooldepth}
+#also starting with Gamma
+#could use 'nb' with survey length as offset 
+d |> 
+  split(~cmplx_strm) |>
+  map(
+    \(df) {
+      f = mgcv::gam(pool_depth ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
+      f$cmplx_strm = df$cmplx_strm[1]
+      return(f)
+    }) |> 
+  map(
+    ~bind_cols(
+      broom::glance(.x), 
+      broom::tidy(.x) 
+    ) |> mutate(cmplx_strm = .x$cmplx_strm)
+  ) |> bind_rows() |> 
+  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
+
+
+```
+
+```{r DELETE_glm_year, eval=FALSE}
+#this is older/preliminary/exploratory and only kept a little longer for reference
+#not sure about best family/approach for W:D, pool-depth, VLWD100
+#betareg returns some signif coef estimates for 'year' for pct_pools in HC streams and pct_gravel in ST streams
+strm_year |> 
+  select(cmplx_strm, year, ends_with("_mean"), -lwd_all_mean, -lwd_all_per100_mean, -lwd_no10_mean) |>
+  pivot_longer(-c(cmplx_strm, year)) |> arrange(cmplx_strm, name, year) |> pivot_wider(names_from = name, values_from = value) |> 
+  nest(.by = cmplx_strm) |>
+  mutate(
+    #glm_lwd = map(data, ~glm(lwd_no10_per100_mean ~ year, data = .x, family = Gamma()) |> broom::tidy() |> filter(term == "year"))
+    lm_pct_pools = map(data, ~lm(pct_pools_mean ~ year, .x) |> broom::tidy() |> filter(term == "year")),
+    glm_pct_pools = map(data, ~betareg::betareg(pct_pools_mean ~ year, data = .x) |> broom::tidy() |> filter(term == "year")),
+    glm_pct_gravel = map(data, ~betareg::betareg(pct_gravel_mean ~ year, data = .x) |> broom::tidy() |> filter(term == "year"))
+  ) |>
+  unnest_wider(starts_with("glm_"), names_sep = "_") |> 
+  unnest_wider(starts_with("lm_"), names_sep = "_") |> 
+  select(cmplx_strm, contains("p.val"))
+
+strm_year |> 
+  #filter(cmplx_strm == "HC_Little Anderson Creek") |> 
+  filter(str_detect(cmplx_strm, "HC")) |> 
+  select(cmplx_strm, year, pct_pools_mean) |> ggplot(aes(year, pct_pools_mean, color = cmplx_strm)) + geom_line() +geom_point()
+
+strm_year |> 
+  filter(str_detect(cmplx_strm, "ST")) |> 
+  select(cmplx_strm, year, pct_gravel_mean) |> ggplot(aes(year, pct_gravel_mean, color = cmplx_strm)) + geom_line() +geom_point()
+
+```
+
+## whole stream time series plots
+
+Presumably this is not something that we want to include in the main manuscript, but it could be SI and may be usefull as reference?
+
+```{r d_strm_year_ggts}
+d <- strm_year |> #glimpse()
+  select(cmplx_strm, year,
+         ends_with("min"), ends_with("mean"), ends_with("max"), 
+         -contains("tot_srvy"),
+         -contains("lwd_all"), 
+         -vlwd_min, -vlwd_mean, -vlwd_max #use density not counts 
+  ) |> 
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  mutate(
+    m = str_sub(name, -3,-1),
+    m = if_else(m == "ean","mean",m), #quickfix 
+    name = str_remove(name, paste0("_",m)) 
+  ) |> 
+  pivot_wider(names_from = m, values_from = value)
+  
+```
+
+```{r gg_strm_year_pointrange_series_grid}
+d |> 
+  ggplot(aes(year, mean, color = cmplx_strm)) +
+  geom_line(linetype = 2, linewidth = 0.5, show.legend = F) +
+  geom_linerange(aes(ymin = min, ymax = max), linewidth = 0.5, show.legend = F) +
+  #geom_linerange(aes(ymin = q25, ymax = q75), linewidth = 1.2, show.legend = F) +
+  geom_point(show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_grid(cols = vars(cmplx_strm), rows = vars(name), scales = "free") +
+  labs(
+    x = "", y = "",
+    title = "Whole-stream per-year means across sites"
+  )
+
+```
+
+# rebuild datasets
+
+this chunk queries from the database views into a large list of tables. these are wrangled in the next chunk into the data objects used in the rest of the script
+
+```{r emap_pull, echo=TRUE, eval=FALSE}
+#declare 'con_emap' odbc::dbConnect
+
+emap <- list()
+
+# rows per year, site metadata: location, length, etc.
+# limiting to sampled, 2007 forward
+# replacing -9999s with NA
+emap$reaches_sampled <- tbl(
+  con_emap,
+  dbplyr::in_schema("dbo", "ZCORE_Reaches_All_V")
+  ) |>
+  filter(
+    Sampl_Or_Not_Ind == 1,
+    Srvy_Yr > 2006
+    ) |>
+  select(
+    cmplx_abrv = COMPLEX_NAME_Abrvd,
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Site_Id,
+    Reach_Survey_Id,
+    STREAM_NAME_LLID_100_Code,
+    x_lat = Xsite_Lat_Coord,
+    x_lon = Xsite_Lngtd_Coord,
+    smpl_mthd_desc = SAMPL_METHOD_Desc,
+    rch_lgth_meas_desc = REACH_LNGTH_MEAS_LOC_Desc,
+    Xsite_Distnc_Up_Meas, Xsite_Distnc_Down_Meas,
+    Total_Reach_Lgth,
+    Move_Reach_Ind
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  mutate(
+    across(
+      c(xsite_distnc_up_meas, xsite_distnc_down_meas, total_reach_lgth),
+      ~if_else(. < 0, NA_integer_, .)
+    ),
+    up_down_lgth = xsite_distnc_up_meas + xsite_distnc_down_meas
+  ) |>
+  left_join(
+    tbl(
+      con_emap,
+      dbplyr::in_schema("dbo", "ZCORE_Transects_Compass_Bearing_Distance_V")
+      ) |>
+      filter(Srvy_Yr > 2006) |>
+      select(Srvy_Yr, Reach_Survey_Id, Reach_Site_Id, Transect_Id, Transect_Compass_Distnc_Meas) |>
+      collect() |>
+      mutate(Transect_Compass_Distnc_Meas = if_else(Transect_Compass_Distnc_Meas < 0, NA_real_, Transect_Compass_Distnc_Meas)) |>
+      group_by(year = Srvy_Yr, reach_site_id = Reach_Site_Id) |>
+      summarise(cmpss_dist_lgth = sum(Transect_Compass_Distnc_Meas), .groups = 'drop')
+  , by = c("year", "reach_site_id")
+  )
+
+
+#bankfull, wetted width, thalweg depth, size channels, bars, etc.
+#usually ~21 transects per site per year
+#limited to 2007 forward, replacing -9999 with NAs
+emap$transects <- tbl(
+  con_emap,
+  dbplyr::in_schema("dbo", "ZCORE_Transects_V")
+  ) |>
+  filter(
+    Srvy_Yr > 2006
+  ) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    x_lat = Xsite_Lat_Coord,
+    x_lon = Xsite_Lngtd_Coord,
+    Transect_Id, Transect_Letter,
+    Transect_Extra_Side_Channel_Ind,
+    Transect_Fish_Present_Ind,
+    Transect_Wet_Wdth_Meas,
+    Transect_Bar_Wdth_Present_Ind, Transect_Bar_Wdth_Meas,
+    Transect_Bankfull_Wdth_Meas, Transect_Bankfull_Hgt_Meas,
+    Transect_Thalweg_Dpth_Meas,
+    CHANNEL_UNIT_CODE_Abrvd, CHANNEL_UNIT_CODE_Desc, #,Transect_Channel_Unit_Code,
+    POOL_FORM_CODE_Desc, #,Transect_Pool_Form_Code,
+    Transect_Backwater_Present_Ind,
+    Pool_Non_Pool_Desc #,Pool_Non_Pool_Code,
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  drop_na(transect_id) |>
+  mutate(
+    across(
+      c(ends_with("_meas")),
+      ~if_else(. < 0, NA_real_, .)
+    )
+  )
+
+#usually 5 substrate measures per transect, ~21 transects per site per year
+#limited to 2007 forward, replacing -9999 with NAs
+emap$substrate <- tbl(
+  con_emap,
+  dbplyr::in_schema("dbo", "ZCORE_Transects_Substrate_V")
+  ) |>
+  filter(Srvy_Yr > 2006) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    Transect_Id, Transect_Letter,
+    CHANNEL_UNIT_CODE_Abrvd, #,Transect_Channel_Unit_Code,
+    Transect_Substrate_Id,
+    TRANSECT_SUBSTRATE_SAMPL_PT_Abrvd, #,TRANSECT_SUBSTRATE_SAMPL_PT_Code,
+    Transect_Substrate_Sampl_Dpth_Meas,
+    TRANSECT_SUBSTRATE_SIZE_CLAS_Abrvd, TRANSECT_SUBSTRATE_SIZE_CLAS_Desc #,TRANSECT_SUBSTRATE_SIZE_CLAS_Code
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  mutate(
+    across(
+      c(ends_with("_meas")),
+      ~if_else(. < 0, NA_real_, .)
+    )
+  )
+
+#measured for 'segments' between (x-section) transects
+#counts for multiple length and diameter classes, in-channel and 'bridging'
+#no coercion to NA (yet)
+emap$lwd <- tbl(
+  con_emap,
+  dbplyr::in_schema("dbo", "ZCORE_ReachSegments_LWD_V")
+  ) |> #colnames()
+  filter(Srvy_Yr > 2006) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    everything()
+  ) |>
+  collect() |>
+  drop_na(LWD_CLAS_Code) |>
+  rename_with(~str_remove(.,"LWD_CLAS_"), contains("LWD_CLAS_")) |>
+  rename_with(tolower)
+
+glimpse(emap)
+
+DBI::dbDisconnect(con_emap)
+rm(uid, pwd, con_emap)
+saveRDS(emap, "emap_pull.rds")
+
+```
+
+this chunk ends with a `save.image` to build .RData environment of objects, adding pool depth, W:D, and a more stratified LWD object
+
+```{r build_envi, echo=TRUE, eval=FALSE}
+#this chunk rebuilds the environment from the full query object
+#  'emap' list of only raw/orig query (before raw and wrangled)
+#  'hab' list of wrangled objects
+#!!hab object here is NOT same as in high_var_stream_hab chunk 'build_hab'!!
+# that chunk high_var_stream_hab>>build_hab has more comments on qaqc and wrangling checks
+
+file.info("~/O/code/imw/emap_pull.rds")['mtime']
+emap <- readRDS("~/O/code/imw/emap_pull.rds")
+names(emap)
+
+#plotting palettes: W to E within complex
+pal_strm <- set_names(
+  c(c("#965127", "#D3BEAF", "#3A270A", "#D2A554"), #"#E4C22B" 
+    c("#1E212F", "#48628A", "#A4BADF"), 
+    c("#254029", "#516F25", "#94AA3D")
+    ),
+  c('Stavis Creek','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
+    'Mill Creek','Abernathy Creek','Germany Creek',
+    'Deep Creek','West Twin River','East Twin River'))
+pal_cmplx_strm <- set_names(
+  pal_strm,
+  c('HC_Stavis Creek','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
+    'LC_Mill Creek','LC_Abernathy Creek','LC_Germany Creek',
+    'ST_Deep Creek','ST_West Twin River','ST_East Twin River'))
+
+
+# #leaves culverts, falls, fishladders etc.
+# emap$transects |> count(channel_unit_code_abrvd, channel_unit_code_desc) |> print(n=100)
+transects_excluded <- c(
+  "-9999", #NAs
+  "IA", #~350 inaccessible
+  "OT" #10 other
+  ) 
+
+
+hab <- list()
+
+#### 1. location and monitoring duration metadata
+hab$site_meta <- emap$reaches_sampled |>
+  summarise(
+    across(c(year), list(min = min, max = max)),
+    year_diff = year_max - year_min + 1,
+    year_n = n(),
+    across(c(x_lon, x_lat), list(mean = ~mean(., na.rm = T))),
+    .by = c("cmplx_abrv", "cmplx_desc", "strm", "site")
+  ) |>
+  unite("cmplx_strm", cmplx_abrv, strm, remove=F) |> 
+  mutate(
+    cmplx_strm = factor(cmplx_strm, levels = names(pal_cmplx_strm)),
+    strm = factor(strm, levels = names(pal_strm)),
+    resto_add = as.integer(str_sub(site,4,6)) > 899
+  ) |> 
+  arrange(cmplx_desc, strm, year_min, site) 
+
+#### 2. clean transects, preserving 'true' supplementals and reducing to only obs used 
+#primary cross-sectional transects are A:K, with intervening A2, B2
+#supplementary X-Y-Z transects at the same stream-longitudinal position can occur when field crew encounter 'substantial' flow splits
+#the distinct() removes ~50 cases in HC from 2007 and 2008 of transect rows that are "X|Y|Z" lettered but are exact duplicates bankfull, wetted and depth measures
+hab$transects <- emap$transects |> 
+  filter(!(channel_unit_code_abrvd %in% transects_excluded)) |> 
+  mutate(tsct_lett = str_remove_all(transect_letter, "X|Y|Z")) |> #91765x23
+  distinct(
+    cmplx_desc, strm, site, year, tsct_lett,
+    pool_non_pool_desc, channel_unit_code_abrvd, channel_unit_code_desc,
+    transect_bankfull_wdth_meas, transect_wet_wdth_meas, transect_thalweg_dpth_meas,
+    .keep_all = T
+    ) |> 
+  #glimpse() #91715x23
+  #leaving out wetted width, bar indicator and width
+  left_join(hab$site_meta |> distinct(strm, cmplx_strm), by = "strm") |> 
+  select(
+    cmplx_strm, cmplx_desc, strm, site, year, x_lon, x_lat,
+    tsct_lett, transect_letter,
+    side_chan = transect_extra_side_channel_ind,
+    fish_prst = transect_fish_present_ind,
+    #wet_wdth = transect_wet_wdth_meas,
+    bnk_wdth = transect_bankfull_wdth_meas,
+    bnk_hght = transect_bankfull_hgt_meas,
+    thl_dpth = transect_thalweg_dpth_meas,
+    pool_non_pool_desc, 
+    channel_unit_code_abrvd, channel_unit_code_desc
+    )
+
+#### 3. summarize site-year channel form measures and substrate
+# - number/pct of 'supplemental' transects for parallel/anastomosed 'side channels' at same longitudinal cross-section
+# - number/pct of intersected (categorical) pools
+# - mean of (thalweg) depth of transects intersecting pools
+# - pct_gravels, note this returns fewer rows than the objects based directly on hab$transects, some strm-site-year are NA esp with filter to GC/GF
+# - summarize site-year sample distrib of (main+supp) bankfull width 
+#   - first need to add main and supplemental widths
+#   - here not distinguishing by categorical pool_non_pool or channel_unit_code to give 'full width' regardless of different 'form types'
+#   - reduces to max of 21 obs per site-year at 'base letter' positions (which can be fewer than the site-year count of all transects)
+# - summarize W:D across transects after first calc'ing for supplementary (XA, YA, etc.) as distinct from primary
+hab$transects_site_year <- hab$transects |> 
+  summarise(
+    n_tsct = n(), #same as: length(transect_letter)
+    n_supp = sum(str_detect(transect_letter, "X|Y|Z")),
+    pct_supp = n_supp / n_tsct,
+    n_pools = sum(pool_non_pool_desc == "Pool"), #includees 'Beaver Pond'
+    pct_pools = n_pools / n_tsct,
+    .by = c("cmplx_strm", "strm", "site", "year")
+  ) |> 
+  full_join(
+    hab$transects |> 
+      filter(pool_non_pool_desc == "Pool") |> 
+      summarise(
+        pool_depth_mean = mean(thl_dpth, na.rm = T),
+        .by = c("strm", "site", "year")
+      ) 
+    ,
+    by = c("strm", "site", "year")
+  ) |>  
+  full_join(
+    emap$substrate |> 
+      count(strm, site, year,
+            transect_substrate_size_clas_abrvd, 
+            transect_substrate_size_clas_desc) |> 
+      group_by(strm, site, year) |>
+      mutate(n_pct = n / sum(n)) |> 
+      filter(transect_substrate_size_clas_abrvd %in% c("GC", "GF")) |> 
+      summarise(pct_gravel = sum(n_pct), .groups = "drop"), #4220x4
+    by = c("strm", "site", "year")
+  ) |> 
+  #now add width
+  full_join(
+    hab$transects |> 
+      #first sum per cross-sectional transect position, doing nothing for many non-split instances
+      summarise(
+        across(c(bnk_wdth), sum), 
+        .by = c("strm", "site", "year", "tsct_lett")
+      ) |> 
+      #then aggregate to site-year distributional measures across transects
+      summarise(
+        across(
+          c(bnk_wdth),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            #med = ~median(., na.rm = T),
+            max = ~max(., na.rm = T)
+            #can easily calc later, leaving off until known pref to calc here
+            #,trsct_cv = ~sd(., na.rm =T) / mean(., na.rm = T)
+          )),
+        .by = c("strm", "site", "year")
+      ), 
+    by = c("strm", "site", "year")
+  ) |>  
+  #now add width:depth
+  #summarization throws warnings whenever grouped vector is empty
+  full_join(
+    hab$transects |> 
+      #calc W:D at every transect, including lateral 'supplementary'  
+      mutate(
+        bnk_w_thl_d = bnk_wdth / thl_dpth,
+        bnk_w_bnk_d = bnk_wdth / bnk_hght
+      ) |> 
+      #then aggregate to site-year distributional measures across transects
+      summarise(
+        across(
+          c(bnk_w_thl_d, bnk_w_bnk_d),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            #med = ~median(., na.rm = T),
+            max = ~max(., na.rm = T)
+          )),
+        .by = c("strm", "site", "year")
+      ) 
+    ,
+    by = c("strm", "site", "year")
+  ) 
+
+#### 4. summarize site-year large wood densities
+#per transect, 3 length and 4 diameter classes for 2 position bridging & inchan
+#always recording counts within each crossing level, including 0s
+#past practice to drop smallest and shortest then sum counts over other levels
+# emap$lwd |> count(diameter_code, diameter_desc, lgth_code, lgth_desc)
+#    diameter_code diameter_desc lgth_code lgth_desc     n
+#            <int> <chr>             <int> <chr>     <int>
+#  1            10 0.1 - 0.3 m          10 1.5 - 5 m 86180
+#  2            10 0.1 - 0.3 m          20 5 - 15 m  86180
+#  3            10 0.1 - 0.3 m          30 >15 m     86180
+#  4            20 0.3 - 0.6 m          10 1.5 - 5 m 86180
+#  5            20 0.3 - 0.6 m          20 5 - 15 m  86180
+#  6            20 0.3 - 0.6 m          30 >15 m     86180
+#  7            30 0.6 - 0.8 m          10 1.5 - 5 m 86180
+#  8            30 0.6 - 0.8 m          20 5 - 15 m  86180
+#  9            30 0.6 - 0.8 m          30 >15 m     86180
+# 10            40 >0.8 m               10 1.5 - 5 m 86180
+# 11            40 >0.8 m               20 5 - 15 m  86180
+# 12            40 >0.8 m               30 >15 m     86180
+#here:
+# - combining 'AlI/Part In' and 'Bridged Above'
+# - aggregate over ALL segments per stream-year
+# - join lengths summarized across surveys/sites to strm-year total, calc'd from the up+down lengths
+# previously imposed limit to larger classes here
+# now retaining for full picture of dynamics
+# filter(
+#   ##placement_code == 10, #all/part in
+#   diameter_code > 10, #more than 0.3m dia
+#   lgth_code > 10 #more than 5m long
+# )
+hab$lwd_site_year <- emap$lwd |>
+  #count(diameter_code, diameter_desc, lgth_code, lgth_desc)
+  #coerce -9999 to NA
+  mutate(lwd_cnt = if_else(lwd_cnt < 0, NA_integer_, lwd_cnt)) |> #1mil x 17
+  summarise(
+    tot_lwd_cnt = sum(lwd_cnt, na.rm=T)
+    , .by = c("strm", "site", "year", "diameter_code", "lgth_code")
+  ) |> #52k x 6
+  mutate(
+    diameter_code = paste0("d", diameter_code),
+    lgth_code = paste0("l", lgth_code)
+    ) |> 
+  unite("diam_lgth", diameter_code, lgth_code) |> 
+  pivot_wider(names_from = diam_lgth, values_from = tot_lwd_cnt) |> #4394 x 15
+  left_join(
+    emap$reaches_sampled |>
+      summarise(
+        tot_srvy_lgth = if_else(
+          !is.na(up_down_lgth),
+          up_down_lgth,
+          cmpss_dist_lgth
+        ),
+        .by = c("site", "year")
+      ) #4398 x 3
+    ,
+    by = c("site","year")
+  ) |> 
+  mutate(
+    lwd_all = d10_l10 + d10_l20 + d10_l30 + 
+              d20_l10 + d20_l20 + d20_l30 + 
+              d30_l10 + d30_l20 + d30_l30 + 
+              d40_l10 + d40_l20 + d40_l30,
+    # lwd_no_d10 = d20_l10 + d20_l20 + d20_l30 + 
+    #              d30_l10 + d30_l20 + d30_l30 + 
+    #              d40_l10 + d40_l20 + d40_l30,
+    lwd_no10 = d20_l20 + d20_l30 + 
+               d30_l20 + d30_l30 + 
+               d40_l20 + d40_l30,
+    across(starts_with("lwd"), list(per100 = ~100 * (. / tot_srvy_lgth)))
+  )
+
+#### 5. sites to include
+hab$incl_sites <- hab$site_meta |> #287
+  #filter(year_n >= 10) #251
+  filter(year_n > 3 & year_n/year_diff > 0.5) |> arrange(year_n) |> #print(n=20) #269, adds mostly newer/recent but consistent sites
+  select(site)
+
+#### 6. summarize measures across years per site and add back to site_meta
+#first filtering to included sites
+#then expanding to complete years per site-stream for explicit missing vals
+#coercing Inf to NA (NaN already gets treated as NA)
+#warnings are legit due to missing vals and/or irrelevant due dropping sites with few obs in primary semi_join
+#preserves only mean-over-years of within-year mean-over-transects
+#could add back median-over-years of within-year median-over-transects but examined diffs were qualitatively insignif
+hab$site_meta <- hab$site_meta |> 
+  semi_join(hab$incl_sites, by = "site") |> 
+  left_join(
+    hab$transects_site_year |> 
+      #semi_join not needed due to left_join but could uncomment for intermediate inspection: semi_join(hab$incl_sites, by = "site") |> 
+      group_by(site) |> 
+      complete(year = min(hab$site_meta$year_min):max(hab$site_meta$year_max)) |> 
+      ungroup() |> #glimpse()
+      mutate(across(where(is.numeric), \(x){ x[is.infinite(x)] <- NA; return(x)})) |> 
+      summarise(
+        across(c(n_tsct, n_supp), list(tot = ~sum(.,na.rm = T))),
+        pct_supp = n_supp_tot / n_tsct_tot,
+        across(
+          c(
+            bankfull_width = bnk_wdth_mean,
+            bankfull_W_D = bnk_w_thl_d_mean,
+            pct_gravel, 
+            pct_pools, 
+            pool_depth = pool_depth_mean
+            ),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            max = ~max(., na.rm = T)
+          )), .by = "site") 
+    , by = "site"
+  ) |> 
+  left_join(
+    hab$lwd_site_year |>
+      group_by(site) |> 
+      complete(year = min(hab$site_meta$year_min):max(hab$site_meta$year_max)) |> 
+      ungroup() |> #glimpse() #no Inf
+      summarise(
+        tot_srvy_lgth_mean = mean(tot_srvy_lgth, na.rm = T),
+        across(
+          c(
+            lwd_all, lwd_all_per100,
+            vlwd = lwd_no10, vlwd_per100 = lwd_no10_per100
+          ),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            max = ~max(., na.rm = T)
+          )), .by = "site")
+    , by = "site"
+  ) |>
+  #mostly already clean, but coerce a few bankfull_W_D Infs to NA
+  mutate(across(where(is.numeric), \(x){ x[is.infinite(x)] <- NA; return(x)})) 
+
+#### 7. measures by site-year for included sites
+#keeping only per-year means across transects where applicable
+#and again completing site-year cases for explicit missing during full study duration
+#and coercing Inf to NA
+hab$site_year <- left_join(
+  hab$transects_site_year,
+  hab$lwd_site_year,
+  by = c("strm","site","year")
+) |> 
+  semi_join(hab$incl_sites, by = "site") |> 
+  select(
+    cmplx_strm, strm, site, year, n_tsct, n_supp, pct_supp, 
+    bankfull_width = bnk_wdth_mean,
+    bankfull_W_D = bnk_w_thl_d_mean,
+    pct_gravel, 
+    pct_pools, 
+    pool_depth = pool_depth_mean,
+    tot_srvy_lgth,
+    lwd_all, lwd_all_per100,
+    vlwd = lwd_no10, vlwd_per100 = lwd_no10_per100
+  ) |> #summary()
+  group_by(cmplx_strm, strm, site) |> 
+  complete(year = min(hab$site_meta$year_min):max(hab$site_meta$year_max)) |> 
+  ungroup() |> #summary() #glimpse()
+  mutate(across(where(is.numeric), \(x){ x[is.infinite(x)] <- NA; return(x)})) 
+
+
+#### 8. site-year measures made spatial 
+#but reduced to only sampled cases due to need for lon/lat
+hab$sf_site_year <- hab$site_year |>
+  left_join(
+    emap$reaches_sampled |> select(site, year, x_lon, x_lat), 
+    by = c("site","year")
+  ) |> 
+  drop_na(x_lon) |> 
+  sf::st_as_sf(coords = c("x_lon", "x_lat"), crs = sf::st_crs(4326)) |> 
+  sf::st_transform(sf::st_crs(2927)) #NAD83 HARN WA ft
+
+
+#### final 'clean' objects broken from list for EDA and fitting
+#left as extra step to allow last minute wrangling while preserving upstream hab-list versions
+site_meta <- hab$site_meta 
+site_year <- hab$site_year
+sf_site_year <- hab$sf_site_year
+#whole-stream per-year distributional moments across sites[year]
+#distinct from per-site summaries across years in hab$site_meta
+#declaration begins from already-site-filtered object
+strm_year <- site_year |>  #as_tibble(sf_site_year) |> 
+  summarise(
+    across(
+      c(
+        bankfull_width,
+        bankfull_W_D,
+        pct_gravel, 
+        pct_pools, 
+        pool_depth,
+        tot_srvy_lgth,
+        lwd_all, lwd_all_per100,
+        vlwd, vlwd_per100
+        ),
+      list(
+        min = ~min(., na.rm = T),
+        q25 = ~quantile(., p = 0.25, na.rm = T),
+        q50 = ~median(., na.rm =T),
+        mean = ~mean(., na.rm = T),
+        q75 = ~quantile(., p = 0.75, na.rm = T),
+        max = ~max(., na.rm = T)
+      )
+    )
+    , .by = c("cmplx_strm", "year")
+  )
+
+rm(emap)
+
+save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/free_mscpt/frontiers_imw_hab_mscpt_fig_tab_",str_remove_all(Sys.Date(),"-") |> str_sub(3,8),".RData"))
+
+```
+
+
+```{r hpsd_mtg_slides}
+sf_site_meta <- site_meta |> 
+  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
+  sf::st_transform(sf::st_crs(2927))
+
+mapview::mapview(sf_site_meta, zcol = "cmplx_strm", col.regions = pal_cmplx_strm)
+mapview::mapview(sf_site_meta, zcol = "cmplx_strm", col.regions = "gold")
+
+
+site_year |> 
+  filter(str_detect(strm, "Stavis")) |> 
+  ggplot(aes(year, vlwd_per100, group = site)) +
+  geom_line() + geom_point()
+
+strm_year |> 
+  filter(str_detect(cmplx_strm, "Stavis")) |> 
+  ggplot() +
+  geom_ribbon(aes(year, ymin = vlwd_per100_min, ymax = vlwd_per100_max), fill = pal_cmplx_strm[1], alpha = 0.5) +
+  geom_ribbon(aes(year, ymin = vlwd_per100_q25, ymax = vlwd_per100_q75), fill = pal_cmplx_strm[1], alpha = 0.7) +
+  geom_line(aes(year, vlwd_per100_q50), color = pal_cmplx_strm[1]) +
+  geom_point(aes(year, vlwd_per100_q50), color = pal_cmplx_strm[1]) +
+  labs(y = "vlwd_per100")
+                
+    
+
+plotly::plot_ly(
+  data = site_year |> 
+    filter(str_detect(strm, "Stavis")) |> drop_na(pct_pools)
+  ,
+  type = "scatter", mode = "line+point",
+  x = ~year, name = ~site,
+  #y = ~pct_pools
+  #y = ~pct_gravel
+  y = ~vlwd_per100
+)
+
+site_year |> filter(site == "STA026")  
+sf_site_year |> filter(site == "STA026") |> mapview::mapview()
+
+
+bsmp_sta <- maptiles::get_tiles(
+  st_as_sfc(st_bbox(sf_site_meta |> filter(str_detect(strm, "Stavis")))) |> 
+    st_buffer(5000),
+  #provider = "OpenStreetMap",
+  provider = "Esri.WorldImagery",
+  crop = TRUE
+  )
+
+#107 & 74 vs 78 & 53?  
+sf_site_meta |> 
+  filter(str_detect(strm, "Stavis")) |> #  mapview::mapview(zcol = "site")
+#  filter(site %in% c("STA078","STA053")) |> 
+  filter(site %in% c("STA107","STA074")) |> 
+  ggplot() + 
+  tidyterra::geom_spatraster_rgb(data = bsmp_sta) +
+  geom_sf_text(aes(label = site), color = "orange") +
+  theme_void()
+
+
+
+```
+
