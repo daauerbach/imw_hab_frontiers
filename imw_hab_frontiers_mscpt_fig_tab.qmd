@@ -34,6 +34,21 @@ theme_set(theme_minimal())
 #can reduce file size if desired by dropping to site_meta, site_year, strm_year objects
 load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/free_mscpt/frontiers_imw_hab_mscpt_fig_tab_250116.RData")
 
+#move back to build_envi when finalizing EMAP pull
+pal_strm <- set_names(
+  c(c("#3A270A", "#D3BEAF", "#965127", "#D2A554"), #"#E4C22B" 
+    c("#1E212F", "#48628A", "#A4BADF"), 
+    c("#254029", "#516F25", "#94AA3D")
+    ),
+  c('Stavis Creek*','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
+    'Mill Creek*','Abernathy Creek','Germany Creek',
+    'Deep Creek*','West Twin River','East Twin River'))
+pal_cmplx_strm <- set_names(
+  pal_strm,
+  c('HC_Stavis Creek*','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
+    'LC_Mill Creek*','LC_Abernathy Creek','LC_Germany Creek',
+    'ST_Deep Creek*','ST_West Twin River','ST_East Twin River'))
+
 
 #### 2024 obs mostly/all complete now except for BBC?
 as_tibble(sf_site_year) |> filter(year == 2024) |> count(cmplx_strm)
@@ -53,569 +68,15 @@ sf_site_year <- sf_site_year |>
 
 ```
 
+# Abstract
 
-# variation
+# Introduction
 
-## magnitude of whole stream interannual
-
-Axis and panel/facet labeling are pending choices on the overall plot style.
-
-```{r d_whole_stream_mag}
-d <- strm_year |> #glimpse()
-  select(cmplx_strm, year, ends_with("_mean"), -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean) |> 
-  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
-  rename_with(~str_remove(., "_mean")) |> 
-  pivot_longer(-c(cmplx_strm, year))
-
-```
-
-### example box-whisker
-
-```{r gg_strm_year_boxes}
-d |> 
-  ggplot(aes(color = cmplx_strm)) +
-  geom_jitter(aes(cmplx_strm, value), position = position_jitter(width = 0.2), size = 0.5, show.legend = F) +
-  geom_boxplot(aes(cmplx_strm, value), fill = NA, outliers = F, show.legend = F) +
-  geom_vline(xintercept = c(4.5, 7.5), linetype = 3) +
-  scale_color_manual(values = pal_cmplx_strm) +
-  scale_x_discrete(guide = guide_axis(angle = 270)) +
-  facet_wrap(~name, ncol = 3, scales = "free_y") +
-  labs(
-    x = "", y = "",
-    title = "Magnitude of whole stream interannual variation",
-    subtitle = "Distributions show per-year means across sites per-stream"
-  )
-
-```
-
-### example ridgeline
-
-```{r gg_strm_year_ridges}
-d |> 
-  ggplot() +
-  #not good unless scale <= 1: geom_hline(yintercept = c(3.5, 6.5), linetype = 3) +
-  ggridges::geom_density_ridges(
-    mapping = aes(value, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm), 
-    #stat = "binline", bins = 20,
-    scale = 1.8,
-    alpha = 0.7,
-    show.legend = F) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_wrap(~name, ncol = 3, scales = "free_x") +
-  labs(
-    x = "", y = "",
-    title = "Magnitude of whole stream interannual variation",
-    subtitle = "Distributions show per-year means across sites per-stream"
-  )
-
-```
-
-### temporal sample mean & SD & CV
-
-```{r gg_strm_year_error_cvbar}
-d_smry <- d |> 
-  summarise(
-    across(
-      value,
-      list(
-        mean = ~mean(.[is.finite(.)], na.rm = T),
-        sd = ~sd(.[is.finite(.)], na.rm = T)
-        ), .names = "{fn}"),
-    .by = c(cmplx_strm, name)
-  ) |> 
-  mutate(cv = sd / mean)
-
-d_smry |> 
-  ggplot(aes(color = cmplx_strm, x = mean, y = fct_rev(cmplx_strm))) +
-  geom_hline(yintercept = c(3.5, 6.5), linetype = 3) +
-  geom_errorbarh(aes(xmin = mean - sd, xmax = mean + sd), height = 0.5, show.legend = F) +
-  geom_point(show.legend = F) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_wrap(~name, ncol = 3, scales = "free_x") +
-  labs(
-    x = "", y = "",
-    title = "Magnitude of whole stream interannual variation",
-    subtitle = "Mean and SD through years of per-year means across sites"
-  )
-
-d_smry |> 
-  ggplot(aes(color = cmplx_strm, fill = cmplx_strm, x = fct_rev(cmplx_strm), y = cv)) +
-  geom_vline(xintercept = c(3.5, 6.5), linetype = 3) +
-  geom_hline(yintercept = 0.5, linetype = 2) +
-  geom_col(width = 0.7, show.legend = F) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  scale_x_discrete(guide = guide_axis(angle = 270)) +
-  facet_wrap(~name, ncol = 3, scales = "fixed") +
-  labs(
-    x = "", y = "",
-    title = "Magnitude of whole stream interannual variation",
-    subtitle = "CV through years of per-year means across sites *NOTE CV is NUMERICALLY QUESTIONABLE FOR PCT_POOLS/GRAVEL*"
-  )
-
-```
-
-
-## whole stream means of per-site interannual ranges
-
-```{r d_whole_strm_site_ranges}
-d <- site_meta |> #glimpse()
-  select(cmplx_strm, site, 
-         ends_with("min"), ends_with("max"), 
-         -starts_with("year"), 
-         -contains("lwd_all"), 
-         -vlwd_min, -vlwd_max #use density not counts 
-         ) |> 
-  pivot_longer(-c(cmplx_strm, site)) |> 
-  mutate(
-    m = str_sub(name, -3,-1), # m = map_chr(meas, ~last(str_split_1(.x,"_"))),
-    name = str_remove(name, paste0("_",m)) # meas = map2_chr(meas, m, ~str_remove(.x, paste0("_",.y)))
-  ) |> 
-  pivot_wider(names_from = m, values_from = value) |> 
-  mutate(
-    site_rng = max - min
-  )
-
-```
-
-### ridgeline of site all-years range
-
-```{r gg_site_range_ridges}
-d |> 
-  drop_na(site_rng) |> filter(is.finite(site_rng)) |> 
-  ggplot() +
-  ggridges::geom_density_ridges(
-    mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm), 
-    scale = 1.8,
-    alpha = 0.7,
-    show.legend = F) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_wrap(~name, ncol = 3, scales = "free_x") +
-  labs(
-    x = "", y = "",
-    title = "Stream network variation in temporal variability",
-    subtitle = "Distributions show per-site interannual ranges"
-  )
-```
-
-### pointrange of mean +/- sd across site all-years range
-
-```{r gg_stream_mean_of_site_range}
-#the network/spatial mean and sd of the site temporal range
-d |> 
-  summarise(
-    across(
-      site_rng, 
-      list(
-        mean = ~mean(.[is.finite(.)], na.rm = T),
-        sd = ~sd(.[is.finite(.)], na.rm = T)
-        )),
-    .by = c(cmplx_strm, name)
-  ) |> 
-  ggplot(aes(cmplx_strm, site_rng_mean, color = cmplx_strm)) + 
-  geom_pointrange(aes(ymin = site_rng_mean - site_rng_sd, ymax = site_rng_mean + site_rng_sd), show.legend = F) + 
-  scale_color_manual(values = pal_cmplx_strm) + 
-  scale_x_discrete(guide = guide_axis(angle = 270)) +
-  facet_wrap(~name, scales = "free") + 
-  labs(x = "", y = "Per-site range over years",
-       title = "Average per-site ranges over years")
-```
-
-these plots are strictly supplementary but perhaps interesting for reference
-
-```{r gg_site_range_horiz_cascade}
-d |>
-  split(~name) |>
-  map(
-    ~.x |> 
-      drop_na(min) |> 
-      ggplot() +
-      geom_linerange(
-        aes(xmin = min, xmax = max,
-            y = fct_reorder(site, min, .fun = "min"),
-            color = cmplx_strm)
-        , show.legend = F
-      ) +
-      scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-      labs(y = "", subtitle = .x$name[1])
-  )  # wrap_plots(nrow = 1)
-
-```
-
-
-# trends
-
-```{r d_strm_year_trends}
-d <- strm_year |> #glimpse()
-  select(cmplx_strm, year, ends_with("_mean"), -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean) |> 
-  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
-  rename_with(~str_remove(., "_mean")) 
-```
-
-
-## whole stream Mann-Kendall 
-
-Detects consistent directional change (monotonic increase or decrease), this answers a question like "Did the proportion of pools throughout the stream network increase over the study duration?".
-
-Some of these whole stream time series of yearly measures show temporal autocorrelation.
-
-Per Google AI overview for search string "autocorrelation correction mann kendall": "Autocorrelation violates the assumption of independence in the MK test, inflating the probability of falsely detecting a trend (Type I error). Positive autocorrelation can lead to an overestimation of the trend significance, while negative autocorrelation can lead to an underestimation."
-
-After examining agreement across a few different packages (`Kendall::MannKendall`, `trend::mk.test`, `modifiedmk::mmkh`), I'm using [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/). 
-
-Kong D, Song H (2024). _rtrend: Trend Estimating Tools_. R package version 0.1.5, <https://CRAN.R-project.org/package=rtrend>.
-
-which implements methods in Hamed and Rao (1998).
-
-Hamed, K. H., & Rao, A. R. (1998). A modified Mann-Kendall trend test for autocorrelated data. Journal of hydrology, 204(1-4), 182-196. <doi:10.1016/S0022-1694(97)00125-X>.
-
-```{r gt_strm_year_mk}
-#https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
-
-strm_year_mk <- d |> 
-  summarise(
-    across(
-        where(is.double),
-        list(
-          # mk_tau = ~Kendall::MannKendall(.)$tau,
-          # mk_pval = ~Kendall::MannKendall(.)$sl,
-          # mk2pval = ~trend::mk.test(na.omit(.))$p.value,
-          # mk4 = ~list(modifiedmk::mmkh(.)),
-          # mk5 = ~list(modifiedmk::mmky(.))
-          
-          mk = ~list(rtrend::mkTrend(.))
-          )
-        ),
-      .by = c(cmplx_strm)
-    ) |> 
-  unnest_wider(ends_with("_mk"), names_sep = ":") |> 
-  select(cmplx_strm, ends_with("pval"), ends_with("slp"))
-
-strm_year_mk_gt <- strm_year_mk |> 
-  arrange(cmplx_strm) |> 
-  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
-  select(cmplx_desc, cmplx_strm, 
-         ends_with("slp"), ends_with("pval"), #so that estimate is left of pval
-         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
-         ) |> 
-  gt(
-    groupname_col = "cmplx_desc", 
-    rowname_col = "cmplx_strm", 
-    caption = "Mann-Kendall trend test results for interannual change in habitat measures"
-    ) |> 
-  fmt_number(ends_with("pval"), decimals = 2) |> 
-  fmt_number(ends_with("slp"), decimals = 4) |> 
-  tab_spanner("Bankfull W", contains("width")) |> 
-  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
-  tab_spanner("Ppn. gravel", starts_with("pct_gravel")) |> 
-  tab_spanner("Ppn. pools", starts_with("pct_pool")) |> 
-  tab_spanner("Pool depth", starts_with("pool_depth")) |> 
-  tab_spanner("VLWD/100m", starts_with("vlwd")) |> 
-  cols_label_with(ends_with("slp"), ~"Sen's") |> 
-  cols_label_with(ends_with("pval"), ~"p-val") |> 
-  tab_style(style = cell_borders("left"), locations = cells_body(columns = ends_with("slp"))) |> 
-  tab_style_body(
-    style = list(cell_text(color = "red")), 
-    columns = c(ends_with("slp"), ends_with("pval")),
-    fn = \(x) x < 0 
-  ) |> 
-  tab_style_body(
-    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
-    columns = c(ends_with("pval")),
-    fn = \(x) x <= 0.05 
-  )
-
-
-strm_year_mk_gg <- strm_year_mk |> 
-  pivot_longer(-cmplx_strm) |> 
-  separate(name, into = c("name","stat"), sep = "_mk:") |> 
-  pivot_wider(names_from = stat, values_from = value) |> 
-  filter(pval < 0.05) |> 
-  mutate(
-    gg = map2(
-      cmplx_strm, name,
-      ~strm_year |> 
-        filter(cmplx_strm == .x) |> 
-        select(cmplx_strm, year, yval = all_of(paste0(.y,"_mean"))) |> 
-        ggplot(aes(year, yval, color = cmplx_strm)) + 
-        geom_line(linetype = 2, show.legend = F) + 
-        geom_point(show.legend = F) + 
-        #geom_smooth(se = F, show.legend = F) + 
-        scale_color_manual(values = pal_cmplx_strm) +
-        labs(x = "", y = .y, subtitle = .x)
-    )
-  ) |> 
-  pull(gg) |> 
-  wrap_plots(ncol = 2) +
-  plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
-
-# #layout here is finicky but not fussing for now
-# wrap_table(strm_year_mk_gt, panel = "full") / strm_year_mk_gg + 
-#   plot_annotation(tag_levels = "a")
-
-strm_year_mk_gt
-
-strm_year_mk_gg
-```
-
-## whole stream KPSS
-
-I think we could leave this out or relegate to Supplementary, but I'm including for now as a reinforcement of the finding that few whole-stream series exhibit linear trends.
-
-Detects non-stationarity, typically in the context of ARIMA-type time series models to determine the need for differencing to remove trends.
-
-Null hypothesis of the test is stationarity, so p<0.05 rejects (i.e., in favor of linear trend; see [https://otexts.com/fpp3/stationarity.html](https://otexts.com/fpp3/stationarity.html))
-
-```{r strm_year_ts_kpss}
-# library(tsibble)
-# library(feasts) #loads: library(fabletools)
-# library(fable)
-#https://feasts.tidyverts.org/
-
-strm_year_ts <- d |> 
-  tsibble::as_tsibble(key = cmplx_strm, index = year)
-
-# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = quantile)
-# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = list(quantile, mu = mean))
-# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feat_acf)
-# # # STL (via loess) not appropriate for yearly data, with no meaningful 'season'?
-# # #also "trend_strength" is relative to 'seasonal' component, not really "slope magnitude"
-# # strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feasts::feat_stl)
-# 
-# #gravel MK signif (pos) for Deep and E-twin
-# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = unitroot_kpss) |> arrange(kpss_pvalue)
-
-strm_year_ts_kpss <- strm_year_ts |>
-  pivot_longer(-c(cmplx_strm, year)) |> 
-  split(~name) |> 
-  map(
-    ~fabletools::features(.x, value, features = feasts::unitroot_kpss) |> 
-      mutate(name = .x$name[1])
-      #rename_with(~paste(.x$name[1],.,sep = "_"), starts_with("kpss"))
-    ) |> 
-  bind_rows()
-
-strm_year_ts_kpss |> 
-  # filter(kpss_pvalue < 0.05)
-  pivot_wider(names_from = name, values_from = starts_with("kpss")) |> 
-  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
-  select(cmplx_desc, cmplx_strm, 
-         #contains("stat"), contains("pval"), #so that estimate is left of pval
-         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
-  ) |> 
-  gt(
-    groupname_col = "cmplx_desc", 
-    rowname_col = "cmplx_strm", 
-    caption = "KPSS test results for interannual stationarity in habitat measures"
-  ) |> 
-  fmt_number(contains("pvalue"), decimals = 2) |> 
-  fmt_number(contains("stat"), decimals = 2) |> 
-  tab_spanner("Bankfull W", contains("width")) |> 
-  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
-  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
-  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
-  tab_spanner("Pool depth", contains("pool_depth")) |> 
-  tab_spanner("VLWD/100m", contains("vlwd")) |> 
-  cols_label_with(contains("stat"), ~"Stat.") |> 
-  cols_label_with(contains("pval"), ~"p-val") |> 
-  tab_style(style = cell_borders("left"), locations = cells_body(columns = contains("stat"))) |> 
-  tab_style_body(
-    style = list(cell_text(color = "red")), 
-    columns = c(contains("stat"), contains("pvalue")),
-    fn = \(x) x < 0 
-  ) |> 
-  tab_style_body(
-    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
-    columns = c(contains("pvalue")),
-    fn = \(x) x <= 0.05 
-  )
-
-```
-
-## GAM regressions on year
-
-This is included somewhat speculatively. We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as 'trends'. This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
-
-### gravel (beta)
-
-```{r gam_gravel}
-#?mgcv::family.mgcv
-d |> 
-  split(~cmplx_strm) |>
-  map(
-    \(df) {
-      f = mgcv::gam(pct_gravel ~ s(year, bs = "cs"), data = df, family = mgcv::betar, method = "REML")
-      f$cmplx_strm = df$cmplx_strm[1]
-      return(f)
-    }) |> 
-  map(
-    ~bind_cols(
-      broom::glance(.x), 
-      broom::tidy(.x) 
-    ) |> mutate(cmplx_strm = .x$cmplx_strm)
-  ) |> bind_rows() |> 
-  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
-```
-
-### pools (beta)
-
-```{r gam_pools}
-d |> 
-  split(~cmplx_strm) |>
-  map(
-    \(df) {
-      f = mgcv::gam(pct_pools ~ s(year, bs = "cs"), data = df, family = mgcv::betar, method = "REML")
-      f$cmplx_strm = df$cmplx_strm[1]
-      return(f)
-    }) |> 
-  map(
-    ~bind_cols(
-      broom::glance(.x), 
-      broom::tidy(.x) 
-    ) |> mutate(cmplx_strm = .x$cmplx_strm)
-  ) |> bind_rows() |> 
-  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
-```
-
-### width-depth (gamma)
-
-```{r gam_w_d}
-#unclear best family - this is a positive real ratio
-#perhaps could use 'nb' but 'Gamma' seemed to have better fits
-d |> 
-  split(~cmplx_strm) |>
-  map(
-    \(df) {
-      f = mgcv::gam(bankfull_W_D ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
-      f$cmplx_strm = df$cmplx_strm[1]
-      return(f)
-    }) |> 
-  map(
-    ~bind_cols(
-      broom::glance(.x), 
-      broom::tidy(.x) 
-    ) |> mutate(cmplx_strm = .x$cmplx_strm)
-  ) |> bind_rows() |> 
-  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
-```
-
-### VLWD (gamma)
-
-```{r gam_vlwd}
-#also starting with Gamma
-#could use 'nb' with survey length as offset 
-d |> 
-  split(~cmplx_strm) |>
-  map(
-    \(df) {
-      f = mgcv::gam(vlwd_per100 ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
-      f$cmplx_strm = df$cmplx_strm[1]
-      return(f)
-    }) |> 
-  map(
-    ~bind_cols(
-      broom::glance(.x), 
-      broom::tidy(.x) 
-    ) |> mutate(cmplx_strm = .x$cmplx_strm)
-  ) |> bind_rows() |> 
-  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
-```
-
-### pool depth (gamma)
-
-```{r gam_pooldepth}
-#also starting with Gamma
-#could use 'nb' with survey length as offset 
-d |> 
-  split(~cmplx_strm) |>
-  map(
-    \(df) {
-      f = mgcv::gam(pool_depth ~ s(year, bs = "cs"), data = df, family = "Gamma", method = "REML")
-      f$cmplx_strm = df$cmplx_strm[1]
-      return(f)
-    }) |> 
-  map(
-    ~bind_cols(
-      broom::glance(.x), 
-      broom::tidy(.x) 
-    ) |> mutate(cmplx_strm = .x$cmplx_strm)
-  ) |> bind_rows() |> 
-  select(cmplx_strm, AIC, logLik, adj.r.squared, term, edf, p.value)
-
-
-```
-
-```{r DELETE_glm_year, eval=FALSE}
-#this is older/preliminary/exploratory and only kept a little longer for reference
-#not sure about best family/approach for W:D, pool-depth, VLWD100
-#betareg returns some signif coef estimates for 'year' for pct_pools in HC streams and pct_gravel in ST streams
-strm_year |> 
-  select(cmplx_strm, year, ends_with("_mean"), -lwd_all_mean, -lwd_all_per100_mean, -lwd_no10_mean) |>
-  pivot_longer(-c(cmplx_strm, year)) |> arrange(cmplx_strm, name, year) |> pivot_wider(names_from = name, values_from = value) |> 
-  nest(.by = cmplx_strm) |>
-  mutate(
-    #glm_lwd = map(data, ~glm(lwd_no10_per100_mean ~ year, data = .x, family = Gamma()) |> broom::tidy() |> filter(term == "year"))
-    lm_pct_pools = map(data, ~lm(pct_pools_mean ~ year, .x) |> broom::tidy() |> filter(term == "year")),
-    glm_pct_pools = map(data, ~betareg::betareg(pct_pools_mean ~ year, data = .x) |> broom::tidy() |> filter(term == "year")),
-    glm_pct_gravel = map(data, ~betareg::betareg(pct_gravel_mean ~ year, data = .x) |> broom::tidy() |> filter(term == "year"))
-  ) |>
-  unnest_wider(starts_with("glm_"), names_sep = "_") |> 
-  unnest_wider(starts_with("lm_"), names_sep = "_") |> 
-  select(cmplx_strm, contains("p.val"))
-
-strm_year |> 
-  #filter(cmplx_strm == "HC_Little Anderson Creek") |> 
-  filter(str_detect(cmplx_strm, "HC")) |> 
-  select(cmplx_strm, year, pct_pools_mean) |> ggplot(aes(year, pct_pools_mean, color = cmplx_strm)) + geom_line() +geom_point()
-
-strm_year |> 
-  filter(str_detect(cmplx_strm, "ST")) |> 
-  select(cmplx_strm, year, pct_gravel_mean) |> ggplot(aes(year, pct_gravel_mean, color = cmplx_strm)) + geom_line() +geom_point()
-
-```
-
-## whole stream time series plots
-
-Presumably this is not something that we want to include in the main manuscript, but it could be SI and may be usefull as reference?
-
-```{r d_strm_year_ggts}
-d <- strm_year |> #glimpse()
-  select(cmplx_strm, year,
-         ends_with("min"), ends_with("mean"), ends_with("max"), 
-         -contains("tot_srvy"),
-         -contains("lwd_all"), 
-         -vlwd_min, -vlwd_mean, -vlwd_max #use density not counts 
-  ) |> 
-  pivot_longer(-c(cmplx_strm, year)) |> 
-  mutate(
-    m = str_sub(name, -3,-1),
-    m = if_else(m == "ean","mean",m), #quickfix 
-    name = str_remove(name, paste0("_",m)) 
-  ) |> 
-  pivot_wider(names_from = m, values_from = value)
-  
-```
-
-```{r gg_strm_year_pointrange_series_grid}
-d |> 
-  ggplot(aes(year, mean, color = cmplx_strm)) +
-  geom_line(linetype = 2, linewidth = 0.5, show.legend = F) +
-  geom_linerange(aes(ymin = min, ymax = max), linewidth = 0.5, show.legend = F) +
-  #geom_linerange(aes(ymin = q25, ymax = q75), linewidth = 1.2, show.legend = F) +
-  geom_point(show.legend = F) +
-  scale_color_manual(values = pal_cmplx_strm) +
-  facet_grid(cols = vars(cmplx_strm), rows = vars(name), scales = "free") +
-  labs(
-    x = "", y = "",
-    title = "Whole-stream per-year means across sites"
-  )
-
-```
-
-# rebuild datasets
+# Methods
 
 this chunk queries from the database views into a large list of tables. these are wrangled in the next chunk into the data objects used in the rest of the script
 
-```{r emap_pull, echo=TRUE, eval=FALSE}
+```{r emap_pull, echo=FALSE, eval=FALSE}
 #declare 'con_emap' odbc::dbConnect
 
 emap <- list()
@@ -770,9 +231,7 @@ saveRDS(emap, "emap_pull.rds")
 
 ```
 
-this chunk ends with a `save.image` to build .RData environment of objects, adding pool depth, W:D, and a more stratified LWD object
-
-```{r build_envi, echo=TRUE, eval=FALSE}
+```{r build_envi, echo=FALSE, eval=FALSE}
 #this chunk rebuilds the environment from the full query object
 #  'emap' list of only raw/orig query (before raw and wrangled)
 #  'hab' list of wrangled objects
@@ -785,7 +244,7 @@ names(emap)
 
 #plotting palettes: W to E within complex
 pal_strm <- set_names(
-  c(c("#965127", "#D3BEAF", "#3A270A", "#D2A554"), #"#E4C22B" 
+  c(c("#3A270A", "#D3BEAF", "#965127", "#D2A554"), #"#E4C22B" 
     c("#1E212F", "#48628A", "#A4BADF"), 
     c("#254029", "#516F25", "#94AA3D")
     ),
@@ -1161,6 +620,356 @@ save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/f
 ```
 
 
+
+```{r map_stream_sites_placeholder}
+sf_site_meta <- site_meta |> 
+  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
+  sf::st_transform(sf::st_crs(2927))
+
+bsmp_sta <- maptiles::get_tiles(
+  st_as_sfc(st_bbox(sf_site_meta |> filter(str_detect(strm, "Stavis")))) |> 
+    st_buffer(5000),
+  #provider = "OpenStreetMap",
+  provider = "Esri.WorldImagery",
+  crop = TRUE
+  )
+
+sf_site_meta |> 
+  filter(str_detect(strm, "Stavis")) |> #  mapview::mapview(zcol = "site")
+  ggplot() + 
+  tidyterra::geom_spatraster_rgb(data = bsmp_sta) +
+  geom_sf_text(aes(label = site), color = "orange") +
+  theme_void()
+
+```
+
+```{r table_stream_sites_metadata}
+#mod from Nov23 ver?
+```
+
+ - descriptions of measures
+ - measures were summarized...
+ 
+Mann-Kendall (MK) detects consistent directional change (monotonic increase or decrease) to answer questions such as, "Did the proportion of gravel substrate throughout sampled sites in the stream network increase over the study duration?"
+
+To account for the temporal autocorrelation evident in many of the time series of yearly whole-stream averages, trends were examined with the modified MK test in [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/) (Kong and Song 2024), which implements the approach of Hamed and Rao (1998).
+
+
+
+# Results & Discussion
+
+Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure NNN). Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, this consistent spatial variation in the magnitude of temporal variation clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). 
+Moreover, for the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them. [For example...stop adding wood to transport reaches?]
+
+```{r figNNN_site_range_ridges, fig.cap="Figure NNN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
+d <- site_meta |> #glimpse()
+  select(cmplx_strm, site, 
+         ends_with("min"), ends_with("max"), 
+         -starts_with("year"), 
+         -contains("lwd_all"), #only 'very' large wood
+         -vlwd_min, -vlwd_max #use density not counts
+         , -contains("bankfull_width")
+         ) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  mutate(
+    m = str_sub(name, -3,-1), # m = map_chr(meas, ~last(str_split_1(.x,"_"))),
+    name = str_remove(name, paste0("_",m)) # meas = map2_chr(meas, m, ~str_remove(.x, paste0("_",.y)))
+  ) |> 
+  pivot_wider(names_from = m, values_from = value) |> 
+  mutate(
+    site_rng = max - min,
+    cmplx_strm = if_else(
+      str_detect(cmplx_strm, "Stavis|Mill|Deep"),
+      paste0(cmplx_strm, "*"), 
+      cmplx_strm) |> 
+      factor(levels = names(pal_cmplx_strm))
+  ) |> 
+  drop_na(site_rng) |> 
+  filter(is.finite(site_rng))
+
+# #just density_ridges
+# d |> 
+#   ggplot() +
+#   ggridges::geom_density_ridges(
+#     mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm),
+#     scale = 1.8,
+#     alpha = 0.7,
+#     show.legend = F) +
+#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+#   facet_wrap(~name, ncol = 3, scales = "free_x") +
+#   labs(
+#     x = "", y = "",
+#     title = "Stream network variation in temporal variability",
+#     subtitle = "Distributions show per-site interannual ranges"
+#   )
+
+
+d |> 
+  ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
+  geom_vline(xintercept = 0) +
+  ggridges::geom_density_ridges(
+    scale = 0.9,
+    alpha = 0.6,
+    show.legend = F) +
+  ggdist::stat_dotsinterval(
+    orientation = "horizontal",
+    slab_linewidth = 0.1, slab_alpha = 0.7, 
+    .width = c(0.5, 0.95),
+    shape = 18, stroke = 1, fatten_point = 2, justification = -0.01, #position = ggdist::position_dodgejust(width = 0.5),
+    show.legend = F
+  ) +
+  coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_wrap(~name, 
+             nrow = 1, #ncol = 3,
+             scales = "free_x") +
+  labs(
+    x = "", y = ""
+    #,
+    #title = "Stream network variation in temporal variation of habitat measures",
+    #subtitle = "Dots are range (max - min) for individual sites, lower interval shows IQR and among-site median"
+  )
+
+```
+
+
+## trends
+
+```{r gt_strm_year_mk}
+#https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
+
+strm_year_mk <- strm_year |> #glimpse()
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+    , -contains("bankfull_width")
+    ) |> 
+  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  summarise(
+    across(
+        where(is.double),
+        list(
+          mk = ~list(rtrend::mkTrend(.))
+          )
+        ),
+      .by = c(cmplx_strm)
+    ) |> 
+  unnest_wider(ends_with("_mk"), names_sep = ":") |> 
+  select(cmplx_strm, ends_with("pval"), ends_with("slp"))
+
+strm_year_mk_gt <- strm_year_mk |> 
+  arrange(cmplx_strm) |> 
+  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
+  select(cmplx_desc, cmplx_strm, 
+         ends_with("slp"), ends_with("pval"), #so that estimate is left of pval
+         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
+         ) |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "Mann-Kendall trend test results for interannual change in habitat measures"
+    ) |> 
+  fmt_number(ends_with("pval"), decimals = 2) |> 
+  fmt_number(ends_with("slp"), decimals = 4) |> 
+  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", starts_with("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", starts_with("pct_pool")) |> 
+  tab_spanner("Pool depth", starts_with("pool_depth")) |> 
+  tab_spanner("VLWD/100m", starts_with("vlwd")) |> 
+  cols_label_with(ends_with("slp"), ~"Sen's") |> 
+  cols_label_with(ends_with("pval"), ~"p-val") |> 
+  tab_style(style = cell_borders("left"), locations = cells_body(columns = ends_with("slp"))) |> 
+  tab_style_body(
+    style = list(cell_text(color = "red")), 
+    columns = c(ends_with("slp"), ends_with("pval")),
+    fn = \(x) x < 0 
+  ) |> 
+  tab_style_body(
+    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
+    columns = c(ends_with("pval")),
+    fn = \(x) x <= 0.05 
+  )
+
+
+strm_year_mk_gg <- strm_year_mk |> 
+  pivot_longer(-cmplx_strm) |> 
+  separate(name, into = c("name","stat"), sep = "_mk:") |> 
+  pivot_wider(names_from = stat, values_from = value) |> 
+  filter(pval < 0.05) |> 
+  mutate(
+    gg = map2(
+      cmplx_strm, name,
+      ~strm_year |> 
+        filter(cmplx_strm == .x) |> 
+        select(cmplx_strm, year, yval = all_of(paste0(.y,"_mean"))) |> 
+        ggplot(aes(year, yval, color = cmplx_strm)) + 
+        geom_line(linetype = 2, show.legend = F) + 
+        geom_point(show.legend = F) + 
+        #geom_smooth(se = F, show.legend = F) + 
+        scale_color_manual(values = pal_cmplx_strm) +
+        labs(x = "", y = .y, subtitle = .x)
+    )
+  ) |> 
+  pull(gg) |> 
+  wrap_plots(ncol = 2) +
+  plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
+
+# #layout here is finicky but not fussing for now
+# wrap_table(strm_year_mk_gt, panel = "full") / strm_year_mk_gg + 
+#   plot_annotation(tag_levels = "a")
+
+strm_year_mk_gt
+
+strm_year_mk_gg
+```
+
+
+
+
+
+We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as multi-year 'trends' (GAM regressions on smoothed year). This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
+
+# Cited
+
+Beechie, T.J., Sear, D.A., Olden, J.D., Pess, G.R., Buffington, J.M., Moir, H., Roni, P. and Pollock, M.M., 2010. Process-based principles for restoring river ecosystems. BioScience, 60(3), pp.209-222.
+
+Hamed, K. H., & Rao, A. R., 1998. A modified Mann-Kendall trend test for autocorrelated data. Journal of hydrology, 204(1-4), 182-196. <doi:10.1016/S0022-1694(97)00125-X>.
+
+Kong D, Song H, 2024. _rtrend: Trend Estimating Tools_. R package version 0.1.5, <https://CRAN.R-project.org/package=rtrend>.
+
+Montgomery, D.R., 1999. Process domains and the river continuum 1. JAWRA Journal of the American Water Resources Association, 35(2), pp.397-410.
+
+Poole, G.C., 2002. Fluvial landscape ecology: addressing uniqueness within the river discontinuum. Freshwater biology, 47(4), pp.641-660.
+
+Vannote, R. L., Minshall, G. W., Cummins, K. W., Sedell, J. R., and Cushing, C. E., 1980. The river continuum concept. Canadian Journal of Fisheries and Aquatic Sciences, 37(1), 130-137
+
+# Supplementary
+
+```{r gg_site_range_horiz_cascade}
+d |>
+  split(~name) |>
+  map(
+    ~.x |> 
+      drop_na(min) |> 
+      ggplot() +
+      geom_linerange(
+        aes(xmin = min, xmax = max,
+            y = fct_reorder(site, min, .fun = "min"),
+            color = cmplx_strm)
+        , show.legend = F
+      ) +
+      scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+      labs(y = "", subtitle = .x$name[1])
+  )  # wrap_plots(nrow = 1)
+
+```
+
+```{r gg_strm_year_pointrange_series_grid}
+d <- strm_year |> #glimpse()
+  select(cmplx_strm, year,
+         ends_with("min"), ends_with("mean"), ends_with("max"), 
+         -contains("tot_srvy"),
+         -contains("lwd_all"), 
+         -vlwd_min, -vlwd_mean, -vlwd_max #use density not counts 
+  ) |> 
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  mutate(
+    m = str_sub(name, -3,-1),
+    m = if_else(m == "ean","mean",m), #quickfix 
+    name = str_remove(name, paste0("_",m)) 
+  ) |> 
+  pivot_wider(names_from = m, values_from = value)
+  
+
+d |> 
+  ggplot(aes(year, mean, color = cmplx_strm)) +
+  geom_line(linetype = 2, linewidth = 0.5, show.legend = F) +
+  geom_linerange(aes(ymin = min, ymax = max), linewidth = 0.5, show.legend = F) +
+  #geom_linerange(aes(ymin = q25, ymax = q75), linewidth = 1.2, show.legend = F) +
+  geom_point(show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_grid(cols = vars(cmplx_strm), rows = vars(name), scales = "free") +
+  labs(
+    x = "", y = "",
+    title = "Whole-stream per-year means across sites"
+  )
+
+```
+
+## whole stream KPSS
+
+I think we could leave this out or relegate to Supplementary, but I'm including for now as a reinforcement of the finding that few whole-stream series exhibit linear trends. Test detects non-stationarity, typically in the context of ARIMA-type time series models to determine the need for differencing to remove trends. Null hypothesis of the test is stationarity, so p<0.05 rejects (i.e., in favor of linear trend; see [https://otexts.com/fpp3/stationarity.html](https://otexts.com/fpp3/stationarity.html))
+
+```{r strm_year_ts_kpss}
+# library(tsibble)
+# library(feasts) #loads: library(fabletools)
+# library(fable)
+#https://feasts.tidyverts.org/
+
+strm_year_ts <- d |> 
+  tsibble::as_tsibble(key = cmplx_strm, index = year)
+
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = quantile)
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = list(quantile, mu = mean))
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feat_acf)
+# # # STL (via loess) not appropriate for yearly data, with no meaningful 'season'?
+# # #also "trend_strength" is relative to 'seasonal' component, not really "slope magnitude"
+# # strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = feasts::feat_stl)
+# 
+# #gravel MK signif (pos) for Deep and E-twin
+# strm_year_ts |> fabletools::features(c(pct_gravel_mean), features = unitroot_kpss) |> arrange(kpss_pvalue)
+
+strm_year_ts_kpss <- strm_year_ts |>
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  split(~name) |> 
+  map(
+    ~fabletools::features(.x, value, features = feasts::unitroot_kpss) |> 
+      mutate(name = .x$name[1])
+      #rename_with(~paste(.x$name[1],.,sep = "_"), starts_with("kpss"))
+    ) |> 
+  bind_rows()
+
+strm_year_ts_kpss |> 
+  # filter(kpss_pvalue < 0.05)
+  pivot_wider(names_from = name, values_from = starts_with("kpss")) |> 
+  left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
+  select(cmplx_desc, cmplx_strm, 
+         #contains("stat"), contains("pval"), #so that estimate is left of pval
+         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
+  ) |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "KPSS test results for interannual stationarity in habitat measures"
+  ) |> 
+  fmt_number(contains("pvalue"), decimals = 2) |> 
+  fmt_number(contains("stat"), decimals = 2) |> 
+  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
+  tab_spanner("Pool depth", contains("pool_depth")) |> 
+  tab_spanner("VLWD/100m", contains("vlwd")) |> 
+  cols_label_with(contains("stat"), ~"Stat.") |> 
+  cols_label_with(contains("pval"), ~"p-val") |> 
+  tab_style(style = cell_borders("left"), locations = cells_body(columns = contains("stat"))) |> 
+  tab_style_body(
+    style = list(cell_text(color = "red")), 
+    columns = c(contains("stat"), contains("pvalue")),
+    fn = \(x) x < 0 
+  ) |> 
+  tab_style_body(
+    style = list(cell_fill("grey80"), cell_text(weight = "bold")), 
+    columns = c(contains("pvalue")),
+    fn = \(x) x <= 0.05 
+  )
+
+```
+
+
+
 ```{r hpsd_mtg_slides}
 sf_site_meta <- site_meta |> 
   st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
@@ -1201,23 +1010,7 @@ site_year |> filter(site == "STA026")
 sf_site_year |> filter(site == "STA026") |> mapview::mapview()
 
 
-bsmp_sta <- maptiles::get_tiles(
-  st_as_sfc(st_bbox(sf_site_meta |> filter(str_detect(strm, "Stavis")))) |> 
-    st_buffer(5000),
-  #provider = "OpenStreetMap",
-  provider = "Esri.WorldImagery",
-  crop = TRUE
-  )
 
-#107 & 74 vs 78 & 53?  
-sf_site_meta |> 
-  filter(str_detect(strm, "Stavis")) |> #  mapview::mapview(zcol = "site")
-#  filter(site %in% c("STA078","STA053")) |> 
-  filter(site %in% c("STA107","STA074")) |> 
-  ggplot() + 
-  tidyterra::geom_spatraster_rgb(data = bsmp_sta) +
-  geom_sf_text(aes(label = site), color = "orange") +
-  theme_void()
 
 
 
