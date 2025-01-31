@@ -658,10 +658,21 @@ To account for the temporal autocorrelation evident in many of the time series o
 
 # Results & Discussion
 
-Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure NNN). Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, this consistent spatial variation in the magnitude of temporal variation clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). 
-Moreover, for the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them. [For example...stop adding wood to transport reaches?]
+Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure SVN). 
 
-```{r figNNN_site_range_ridges, fig.cap="Figure NNN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
+**[I have focused on the 3 measures that I am most comfortable describing]**
+
+Indeed, ranges in the proportion of gravel substrate differed as much or more between sites within streams as between streams (Table SVN). All streams included sites with maximum ranges greater than 0.5, and 7 of 10 streams had much less variable sites with ranges < 0.2, including 0 or nearly 0 difference through time in Stavis, Big Beef, Mill and Abernathy creeks. The per-stream average ranges fell between 0.33 (Stavis) and 0.5 (Germany), with the Lower Columbia streams grouped relatively closely, and the Straits, Little Anderson and Seabeck Creeks also grouped around an average range of approximately 0.4. In other words, all streams included a preponderance of sites with modest change through time in the proportion of gravel substrate as well as several locations characterized by little to no change and several with very substantial variation.
+
+Similarly, site differed as much or more within streams as between streams in terms of the range through time in average pool depth. Ranges of 0 or nearly 0 were present in all streams, and the difference among streams in average range, from 0.2 in Little Anderson Creek to 0.5 in Abernathy Creek, was less than the difference between minimum and maximum ranges in all streams. That is, every stream included locations with pool depths that exhibited very little fluctuation as well as those that showed major change through time. In terms of the absolute magnitude of difference in measured depth, the degree of temporal variation was related as much to position within the stream network as it was to which stream network.
+
+Per-site large wood density showed somewhat greater separation among complexes and streams, although each stream included high and low variation sites. The maximum and average ranges in the Straits streams were larger than in Hood Canal or the Lower Columbia, although every stream other than Mill Creek contained sites with ranges as large or larger than the Straits average. 
+**[Seems like more could be said here, esp w/r/t LWD additions, but also going to describe in trends section...]**
+
+Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, these long term monitoring data showed streams were consistent in having within-network spatial variation in the magnitude of temporal variation, a finding that clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). For the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them. 
+**[For example...stop adding wood to transport reaches?]**
+
+```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
 d <- site_meta |> #glimpse()
   select(cmplx_strm, site, 
          ends_with("min"), ends_with("max"), 
@@ -729,11 +740,84 @@ d |>
     #title = "Stream network variation in temporal variation of habitat measures",
     #subtitle = "Dots are range (max - min) for individual sites, lower interval shows IQR and among-site median"
   )
+```
+
+```{r tabSNV_site_range_ridges, tab.cap="Table SNV: Mean, minimum, and maximum range per-site in habitat measures across streams."}
+d_gt <- d |> 
+  summarise(
+    across(
+      #c(min, max, site_rng), 
+      site_rng,
+      list(
+        min = ~min(.,na.rm = T),
+        mean = ~mean(.,na.rm = T),
+        max = ~max(.,na.rm = T)
+        )
+      )
+    ,.by = c(cmplx_strm, name)
+  ) |>
+  left_join(
+    distinct(site_meta, cmplx_strm, cmplx_desc) |> 
+      mutate(
+        cmplx_strm = if_else(
+          str_detect(cmplx_strm, "Stavis|Mill|Deep"),
+          paste0(cmplx_strm, "*"), 
+          cmplx_strm) |> 
+          factor(levels = names(pal_cmplx_strm))
+      )
+    , by = "cmplx_strm"
+  ) |> 
+  pivot_wider(names_from = name, values_from = contains("site_rng")) |> 
+  select(
+    cmplx_desc, cmplx_strm, #strm,
+    contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd")
+  )
+
+d_gt |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "Mean, minimum, and maximum range per-site in habitat measures across streams"
+    ) |> 
+  fmt_number(where(is.numeric), decimals = 0) |> 
+  fmt_number(contains("pool_depth"), decimals = 1) |> 
+  fmt_number(contains("pct"), decimals = 2) |> 
+#  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
+  tab_spanner("Pool depth", contains("pool_depth")) |> 
+  tab_spanner("VLWD/100m", contains("vlwd")) |> 
+  cols_label_with(contains("min"), ~"min") |> 
+  cols_label_with(contains("mean"), ~"mean") |> 
+  cols_label_with(contains("max"), ~"max") |> 
+  tab_style(
+    style = list(cell_borders("left", weight = px(1.5))), 
+    locations = cells_body(columns = contains("min"))
+  ) |> 
+  tab_style(
+    style = list(cell_text(style = "italic")), 
+    locations = map(3:17, 
+      ~cells_body(columns = .x, rows = which.min(unlist(d_gt[,.x])))
+    )
+  ) |> 
+  tab_style(
+    style = list(cell_text(decorate = "underline")), 
+    locations = map(3:17, 
+      ~cells_body(columns = .x, rows = which.max(unlist(d_gt[,.x])))
+    )
+  )
 
 ```
 
 
-## trends
+While streams shared a general pattern of within-network differences in the magnitude of temporal variation, and although various individual sites showed appreciable interannual change, consistent directional change was rarely detectable in time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table TRND, Figure TRND).
+
+[add specifics]
+
+trend statistics demonstrate prevailing lack of consistent, directional change	
+application to practice: restoration effects were only detectable when implemented at sufficient magnitude and duration and extent (i.e., lots of wood, over several years, in enough stream km above monitoring sites)
+
 
 ```{r gt_strm_year_mk}
 #https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
