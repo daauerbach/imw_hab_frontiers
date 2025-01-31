@@ -811,11 +811,17 @@ d_gt |>
 ```
 
 
-While streams shared a general pattern of within-network differences in the magnitude of temporal variation, and although various individual sites showed appreciable interannual change, consistent directional change was rarely detectable in time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table TRND, Figure TRND).
+In addition to a shared general pattern of within-network heterogeneity in the magnitude of temporal variation, at the watershed scale, consistent directional change was rarely detectable in the time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table TRND, Figure TRND). Furthermore, with the exception of large wood in Abernathy Creek, the detectable trends were weak, failed to indicate separation between treatment and control streams, and did not necessarily suggest in-channel habitat improvement.
 
-[add specifics]
+Mann-Kendall (MK) tests for trends in whole-stream interannual change were significant (p < 0.05) for the proportion of gravel substrate in Deep and East Twin Creeks (weakly positive slopes indicating increased gravel prevalence), for mean pool depth in Little Anderson and Deep Creeks (weakly negative slopes indicating shallower pools on average), and for large wood density in Abernathy Creek (modestly strong positive slope indicating increased wood prevalence).
 
-trend statistics demonstrate prevailing lack of consistent, directional change	
+**[The proportion of pools within sites showed a significant positive trend in each of the Hood Canal streams other than Seabeck Creek, as well as in Deep Creek.]**
+
+
+Various individual sites did show statistically significant directional shifts through time in several measures (Figure TRND-site), but, again with the exception of Abernathy Creek's large wood density change, these findings reinforced the conclusions at the scale of the whole-stream averages: relatively weak trends, little treatment-control separation, and little indication of desired habitat improvement.
+
+
+
 application to practice: restoration effects were only detectable when implemented at sufficient magnitude and duration and extent (i.e., lots of wood, over several years, in enough stream km above monitoring sites)
 
 
@@ -909,6 +915,53 @@ strm_year_mk_gt
 strm_year_mk_gg
 ```
 
+```{r figTRND_site_year_mk}
+site_year_mk <- site_year |> #glimpse()
+  select(
+    cmplx_strm, site, year, 
+    bankfull_W_D, pct_gravel, pct_pools, pool_depth, vlwd_per100
+    ) |> 
+  summarise(
+    across(
+        where(is.double),
+        list(
+          mk = ~list(rtrend::mkTrend(.))
+          )
+        ),
+      .by = c(cmplx_strm, site)
+    ) |> 
+  unnest_wider(ends_with("_mk"), names_sep = ":") |> 
+  select(cmplx_strm, site, ends_with("pval"), ends_with("slp")) |> 
+  pivot_longer(-c(cmplx_strm, site))
+
+
+site_year |> 
+  select(
+    cmplx_strm, site, year, 
+    bankfull_W_D, pct_gravel, pct_pools, pool_depth, vlwd_per100
+  ) |> 
+  pivot_longer(-c(cmplx_strm, site, year)) |> 
+  semi_join(
+    site_year_mk |> 
+      filter(str_detect(name, "pval")) |>  #1345 site-measure tests
+      filter(value < 0.05) |> #166 'signif'
+      #count(name) |> arrange(desc(n)) #most for wood
+      #count(cmplx_strm) |> arrange(desc(n)) #most for Abernathy; note Deep and Stavis very similar to treatment streams in n-signif
+      mutate(name = str_remove(name, "_mk:pval"))
+    ,
+    by = c("site","name")    
+  ) |> 
+  split(~name) |> 
+  map(
+    ~.x |> 
+      ggplot(aes(year, value, group = site, color = cmplx_strm)) +
+      geom_line() + geom_point() + 
+      scale_color_manual(values = pal_cmplx_strm) +
+      facet_wrap(~cmplx_strm, scales = "free") +
+      labs(subtitle = .x$name[1])
+  )
+
+```
 
 
 
@@ -1077,8 +1130,6 @@ strm_year |>
   geom_point(aes(year, vlwd_per100_q50), color = pal_cmplx_strm[1]) +
   labs(y = "vlwd_per100")
                 
-    
-
 plotly::plot_ly(
   data = site_year |> 
     filter(str_detect(strm, "Stavis")) |> drop_na(pct_pools)
@@ -1089,14 +1140,5 @@ plotly::plot_ly(
   #y = ~pct_gravel
   y = ~vlwd_per100
 )
-
-site_year |> filter(site == "STA026")  
-sf_site_year |> filter(site == "STA026") |> mapview::mapview()
-
-
-
-
-
-
 ```
 
