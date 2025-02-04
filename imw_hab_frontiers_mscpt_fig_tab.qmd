@@ -42,12 +42,12 @@ pal_strm <- set_names(
     ),
   c('Stavis Creek*','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
     'Mill Creek*','Abernathy Creek','Germany Creek',
-    'Deep Creek*','West Twin River','East Twin River'))
+    'Deep Creek','West Twin River*','East Twin River'))
 pal_cmplx_strm <- set_names(
   pal_strm,
   c('HC_Stavis Creek*','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
     'LC_Mill Creek*','LC_Abernathy Creek','LC_Germany Creek',
-    'ST_Deep Creek*','ST_West Twin River','ST_East Twin River'))
+    'ST_Deep Creek','ST_West Twin River*','ST_East Twin River'))
 
 
 #### 2024 obs mostly/all complete now except for BBC?
@@ -72,7 +72,52 @@ sf_site_year <- sf_site_year |>
 
 # Introduction
 
+Widespread recognition of declining Pacific salmon populations has led to major, often publicly-funded, recovery efforts (Bilby et al. 2024). Protection and rehabilitation of the freshwater and estuarine systems where salmon spawn and rear is essential to these efforts, and, in 1999, the Washington State legislature created the Salmon Recovery Funding Board (SRFB) and a system of regional recovery organizations to distribute resources for projects meant to benefit fish habitat. The SRFB subsequently requested a study to assess the efficacy of stream habitat restoration and enhancement at the "watershed scale", based on the idea that sub-populations of each salmon species complete their freshwater life histories at the spatial extent of river networks rather than that of individual projects. Despite recognition that fish integrate complex hydrologic and geomorphic processes throughout riverscapes and the fact that many monitoring and management activities occur at this scale (Roni 2005), the logistical difficulty of experimental manipulation over entire catchments and the urgency of intervention has greatly limited the evaluation of restoration practice in this way.
+
+The Washington Intensively Monitored Watersheds (IMW) study is a collaborative, long-term, large-scale effort to meet the need for such evidence, with a study design that pairs measures of habitat conditions with salmon survival and productivity monitoring throughout multiple entire basins in several geographic "complexes" of replicate treatment and adjacent control streams (Bilby et al. 2005, Bennett et al. 2016). The inclusion of untreated sites and entire reference streams subject to comparable climate and management regimes enables strong inference regarding attribution and efficacy (Parker and Wiens 2005), and the results of this study were envisioned to directly inform the organizational processes and procedures through which various entities identify, design, propose, and implement recovery projects.
+
+This paper describes patterns of variation in the stream habitat measures collected annually since 2007 at `r nrow(site_meta)` sites distributed within 10 streams comprising 3 western Washington complexes. These observations constitue a substantial body of empirical evidence regarding the long-term dynamics of channel form in forested catchments of northwestern North America, and they contribute a unique and valuable perspective to discussions regarding the strengths and limitations of salmon recovery efforts to date (Bilby et al. 2024). Most robustly, this large dataset reinforces the critical need to plan for spatiotemporal variation in process-based river restoration. These findings also indicate the practical challenges of detecting returns on restoration investments at the whole-stream scale, and the IMW habitat monitoring data suggest how the sociopolitical processes that currently shape restoration resource allocation may unintentionally increase this detection problem. 
+
+
 # Methods
+
+## Study Area
+
+Stream habitat data in the western Washington IMW study are collected in three complexes of small, adjacent watersheds (Figure 1, Table 1).
+The Strait of Juan de Fuca complex (ST) includes East Twin, West Twin (reference), and Deep creeks. The Hood Canal complex (HC) includes Little Anderson, Big Beef, Seabeck and Stavis (reference) creeks. The Lower Columbia complex (LC) includes Germany, Abernathy, and Mill (reference) creeks.  
+
+RESTART HERE
+
+Small watersheds were selected so that restoration efforts could treat a large proportion of watersheds in a relatively short duration. Using small watersheds also allows similar watersheds to be compared and relatively small survey effort could survey a large proportion of the streams (Figures 1-3). Limited funds for restoration and monitoring were primary concerns. 
+
+```{r map_stream_sites_placeholder}
+sf_site_meta <- site_meta |> 
+  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
+  sf::st_transform(sf::st_crs(2927))
+
+bsmp_sta <- maptiles::get_tiles(
+  st_as_sfc(st_bbox(sf_site_meta |> filter(str_detect(strm, "Stavis")))) |> 
+    st_buffer(5000),
+  #provider = "OpenStreetMap",
+  provider = "Esri.WorldImagery",
+  crop = TRUE
+  )
+
+sf_site_meta |> 
+  filter(str_detect(strm, "Stavis")) |> #  mapview::mapview(zcol = "site")
+  ggplot() + 
+  tidyterra::geom_spatraster_rgb(data = bsmp_sta) +
+  geom_sf_text(aes(label = site), color = "orange") +
+  theme_void()
+
+```
+
+Intensive annual habitat surveys were based on Lazorchak et al. (1998), Roper et al. (2003), and Crawford (2011). The survey methods are very similar to those used by the Washington Watershed Health Monitoring Program and Oregon Coastal Coho Surveys (Anlauf et al. 2009). Habitat sampling locations (hereafter sites) were identified using a random, spatially balanced design (Stevens and Olsen 2004) that was stratified by stream order. Habitat surveys were conducted from June through October, beginning in 2004 and ongoing. Based on analyses of surveys completed in 2004 – 2006, and our desire to maximize our ability to detect trends we modified our survey design to annually resurvey sites in each watershed. As necessary and possible, sites are added to replace those that become inaccessible and when effort allows, following the random, spatially balanced design. Annual sampling rotated among watersheds approximately weekly to minimize seasonal bias.
+
+At each site, samples consist of measures and counts made at and between 21 equally-spaced transect cross-sections (hereafter transects). Transects were positioned equidistant and perpendicular to flow along a length of stream that is the longer of either 40 bankfull widths or 300 m. Measurements at each transect included bankfull width (to the nearest 0.0 m), water depth (≥5 points to the nearest 0.00 m), and tallies of substrate size classes. Wood within the bankfull channel was counted by length and diameter classes between transects. Substrate was classified at approximately 5 points per transect as either smooth bedrock or rough bedrock (> 4 m), boulder (250 – 4000 mm), cobble (64 – 250 mm), coarse gravel (16 – 64 mm), fine gravel (2 – 16 mm), sand (0.06 – 2 mm), fines (< 2 mm), hardpan, wood, or other. When found, dry channels were sampled and all possible measurements were made (e.g., depth is not measured). Presence of a backwater or side channel crossed by cross-sections were also recorded. 
+
+
+## Data and analyses
 
 this chunk queries from the database views into a large list of tables. these are wrangled in the next chunk into the data objects used in the rest of the script
 
@@ -621,27 +666,6 @@ save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/f
 
 
 
-```{r map_stream_sites_placeholder}
-sf_site_meta <- site_meta |> 
-  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
-  sf::st_transform(sf::st_crs(2927))
-
-bsmp_sta <- maptiles::get_tiles(
-  st_as_sfc(st_bbox(sf_site_meta |> filter(str_detect(strm, "Stavis")))) |> 
-    st_buffer(5000),
-  #provider = "OpenStreetMap",
-  provider = "Esri.WorldImagery",
-  crop = TRUE
-  )
-
-sf_site_meta |> 
-  filter(str_detect(strm, "Stavis")) |> #  mapview::mapview(zcol = "site")
-  ggplot() + 
-  tidyterra::geom_spatraster_rgb(data = bsmp_sta) +
-  geom_sf_text(aes(label = site), color = "orange") +
-  theme_void()
-
-```
 
 ```{r table_stream_sites_metadata}
 #mod from Nov23 ver?
@@ -690,7 +714,7 @@ d <- site_meta |> #glimpse()
   mutate(
     site_rng = max - min,
     cmplx_strm = if_else(
-      str_detect(cmplx_strm, "Stavis|Mill|Deep"),
+      str_detect(cmplx_strm, "Stavis|Mill|West"),
       paste0(cmplx_strm, "*"), 
       cmplx_strm) |> 
       factor(levels = names(pal_cmplx_strm))
@@ -760,7 +784,7 @@ d_gt <- d |>
     distinct(site_meta, cmplx_strm, cmplx_desc) |> 
       mutate(
         cmplx_strm = if_else(
-          str_detect(cmplx_strm, "Stavis|Mill|Deep"),
+          str_detect(cmplx_strm, "Stavis|Mill|West"),
           paste0(cmplx_strm, "*"), 
           cmplx_strm) |> 
           factor(levels = names(pal_cmplx_strm))
@@ -966,11 +990,19 @@ site_year |>
 
 
 
-We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as multi-year 'trends' (GAM regressions on smoothed year). This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
+  - unanticipated limitations of the original treatment-control study design: not enough concentrated 'treatment' interventions because of limited alignment with lead entity priorities and inadequately weighted competition with non-IMW projects
+
+  - We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as multi-year 'trends' (GAM regressions on smoothed year). This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
+
+# Conclusions
+
+Successful salmon recovery requires thinking upstream and down, next year and the year after and five years after that.
 
 # Cited
 
 Beechie, T.J., Sear, D.A., Olden, J.D., Pess, G.R., Buffington, J.M., Moir, H., Roni, P. and Pollock, M.M., 2010. Process-based principles for restoring river ecosystems. BioScience, 60(3), pp.209-222.
+
+Bilby, R.E., Currens, K.P., Fresh, K.L., Booth, D.B., Fuerstenberg, R.R. and Lucchetti, G.L., 2024. Why Aren't Salmon Responding to Habitat Restoration in the Pacific Northwest?. Fisheries, 49(1), pp.16-27.
 
 Hamed, K. H., & Rao, A. R., 1998. A modified Mann-Kendall trend test for autocorrelated data. Journal of hydrology, 204(1-4), 182-196. <doi:10.1016/S0022-1694(97)00125-X>.
 
@@ -978,7 +1010,11 @@ Kong D, Song H, 2024. _rtrend: Trend Estimating Tools_. R package version 0.1.5,
 
 Montgomery, D.R., 1999. Process domains and the river continuum 1. JAWRA Journal of the American Water Resources Association, 35(2), pp.397-410.
 
+Parker, K.R. and Wiens, J.A., 2005. Assessing recovery following environmental accidents: environmental variation, ecological assumptions, and strategies. Ecological Applications, 15(6), pp.2037-2051.
+
 Poole, G.C., 2002. Fluvial landscape ecology: addressing uniqueness within the river discontinuum. Freshwater biology, 47(4), pp.641-660.
+
+Roni, P., editor. 2005. Monitoring stream and watershed restoration.  American Fisheries Society, Bethesda, Maryland.
 
 Vannote, R. L., Minshall, G. W., Cummins, K. W., Sedell, J. R., and Cushing, C. E., 1980. The river continuum concept. Canadian Journal of Fisheries and Aquatic Sciences, 37(1), 130-137
 
