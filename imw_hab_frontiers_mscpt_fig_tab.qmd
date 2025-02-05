@@ -30,24 +30,8 @@ theme_set(theme_minimal())
 # dir_data_common <- "~/T/DFW-Team WDFW Watershed Synthesis - data_common"
 # epsg <- 2927 #WA state standard; NAD83(HARN)/ft
 
-#this still includes the full transects and lwd tables
-#can reduce file size if desired by dropping to site_meta, site_year, strm_year objects
-load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/free_mscpt/frontiers_imw_hab_mscpt_fig_tab_250116.RData")
-
-#move back to build_envi when finalizing EMAP pull
-pal_strm <- set_names(
-  c(c("#3A270A", "#D3BEAF", "#965127", "#D2A554"), #"#E4C22B" 
-    c("#1E212F", "#48628A", "#A4BADF"), 
-    c("#254029", "#516F25", "#94AA3D")
-    ),
-  c('Stavis Creek*','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
-    'Mill Creek*','Abernathy Creek','Germany Creek',
-    'Deep Creek','West Twin River*','East Twin River'))
-pal_cmplx_strm <- set_names(
-  pal_strm,
-  c('HC_Stavis Creek*','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
-    'LC_Mill Creek*','LC_Abernathy Creek','LC_Germany Creek',
-    'ST_Deep Creek','ST_West Twin River*','ST_East Twin River'))
+#version without fig/table specific objects
+load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250205.RData")
 
 
 #### 2024 obs mostly/all complete now except for BBC?
@@ -65,7 +49,6 @@ sf_site_year <- sf_site_year |>
     !(cmplx_strm == "HC_Big Beef Creek" & year == 2024)
   )
 
-
 ```
 
 # Abstract
@@ -81,14 +64,11 @@ This paper describes patterns of variation in the stream habitat measures collec
 
 # Methods
 
-## Study Area
+## Study area
 
 Stream habitat data in the western Washington IMW study are collected at sites within three complexes of 10 small, adjacent watersheds (Figure 1, Table 1). The Strait of Juan de Fuca complex (ST) includes East Twin, West Twin (reference), and Deep creeks. The Hood Canal complex (HC) includes Little Anderson, Big Beef, Seabeck and Stavis (reference) creeks. The Lower Columbia complex (LC) includes Germany, Abernathy, and Mill (reference) creeks. These smaller watersheds were selected with the intent of increasing the proportion of stream networks that experienced restoration "treatment" within the study duration and to increase the sampling density for monitoring surveys.  
 
 ```{r figMAP_stream_sites_placeholder, fig.cap="Western Washington IMW stream habitat monitoring sites for Hood Canal (a,d), Lower Columbia (b,e), and Strait of Juan de Fuca (c,f) complexes. Stavis, Mill and West Twin creeks were designated as control watersheds in original study design."}
-sf_site_meta <- site_meta |> 
-  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
-  sf::st_transform(sf::st_crs(2927))
 
 bsmp_str <- map(
   set_names(unique(sf_site_meta$cmplx_desc))
@@ -99,7 +79,7 @@ bsmp_str <- map(
     provider = "Esri.WorldStreetMap",
     crop = TRUE
   )
-)  
+)
 
 bsmp_img <- map(
   set_names(unique(sf_site_meta$cmplx_desc))
@@ -109,7 +89,7 @@ bsmp_img <- map(
     provider = "Esri.WorldImagery",
     crop = TRUE
   )
-)  
+)
 
 bsmp_top <- map(
   set_names(unique(sf_site_meta$cmplx_desc))
@@ -119,7 +99,7 @@ bsmp_top <- map(
     provider = "OpenTopoMap",
     crop = TRUE
   )
-)  
+)
 
 wrap_plots(map(
   unique(sf_site_meta$cmplx_desc)
@@ -160,7 +140,30 @@ wrap_plots(map(
 
 ```
 
-Intensive annual habitat surveys were based on Lazorchak et al. (1998), Crawford et al. (2002), and Roper et al. (2003). Survey protocols are similar to those used by the Washington Watershed Health Monitoring Program and the Oregon Coastal Coho Surveys (Anlauf et al. 2009). Habitat sampling locations (hereafter sites) were identified using a random, spatially balanced design stratified by stream order (Stevens and Olsen 2004). Surveys were conducted between June and October, beginning in 2004 and ongoing, with rotation among watersheds approximately weekly to minimize seasonal bias. Given the interest in detecting interannual trends, and following preliminary analyses of survey data collected in 2004 – 2006, the approach was modified to resurvey a consistent set of sites in each watershed. Some sites have been added following the random, spatially balanced design due to changes in accessibility.
+```{r tabStrmMetadata}
+site_meta |> 
+  summarise(
+    n_site = n(),
+    across(year_n, median),
+    across(n_tsct_tot, sum),
+    .by = c(cmplx_desc, strm)
+  ) |>
+  mutate(
+    `Treatment/Control` = if_else(str_detect(strm, "Stavis|Mill|West"), "control", "treatment")
+    ,colfill = alpha(pal_strm[strm], 0.7)
+    ) |> 
+  select(cmplx_desc, strm, colfill, `Treatment/Control`,
+         Sites = n_site, `Median years/site` = year_n, `Total transects` = n_tsct_tot) |> 
+  gt(groupname_col = "cmplx_desc", rowname_col = "strm") |> 
+  cols_hide(columns = "colfill") |> 
+  fmt_number(columns = where(is.numeric), decimals = 0) |> 
+  tab_style(
+    style = cell_fill(color = from_column("colfill")), locations = cells_body()
+  )
+
+```
+
+Intensive annual habitat surveys were based on Lazorchak et al. (1998), Crawford et al. (2002), and Roper et al. (2003). Survey protocols are similar to those used by the Washington Watershed Health Monitoring Program and the Oregon Coastal Coho Surveys (Anlauf et al. 2009). Habitat sampling locations (hereafter sites) were identified using a random, spatially balanced design stratified by stream order (Stevens and Olsen 2004). Surveys were conducted between June and October, beginning in 2004 and ongoing, with rotation among watersheds approximately weekly to minimize seasonal bias. Given the interest in detecting interannual trends, and following preliminary analyses of survey data collected in 2004 – 2006, the approach was modified to resurvey a consistent set of sites in each watershed. Only data from surveys conducted in 2007 and onward are presented. Some sites have been added following the random, spatially balanced design due to changes in accessibility.
 
 At each site, measurements and counts are made at and between 21 equally spaced cross-sectional transects, positioned equidistant and perpendicular to flow along a length of stream that is the longer of either 40 bankfull widths or 300m. Measurements at each transect included bankfull width (to the nearest 0.0 m), water depth (≥5 points to the nearest 0.00 m), and tallies of substrate size classes. Wood within the bankfull channel was counted by length and diameter classes between transects. Substrate was classified at approximately 5 points per transect as either smooth bedrock or rough bedrock (> 4 m), boulder (250 – 4000 mm), cobble (64 – 250 mm), coarse gravel (16 – 64 mm), fine gravel (2 – 16 mm), sand (0.06 – 2 mm), fines (< 2 mm), hardpan, wood, or other. When found, dry channels were sampled and all possible measurements were made (e.g., depth is not measured).
 
@@ -338,15 +341,14 @@ pal_strm <- set_names(
     c("#1E212F", "#48628A", "#A4BADF"), 
     c("#254029", "#516F25", "#94AA3D")
     ),
-  c('Stavis Creek','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
-    'Mill Creek','Abernathy Creek','Germany Creek',
-    'Deep Creek','West Twin River','East Twin River'))
+  c('Stavis Creek*','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
+    'Mill Creek*','Abernathy Creek','Germany Creek',
+    'Deep Creek','West Twin River*','East Twin River'))
 pal_cmplx_strm <- set_names(
   pal_strm,
-  c('HC_Stavis Creek','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
-    'LC_Mill Creek','LC_Abernathy Creek','LC_Germany Creek',
-    'ST_Deep Creek','ST_West Twin River','ST_East Twin River'))
-
+  c('HC_Stavis Creek*','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
+    'LC_Mill Creek*','LC_Abernathy Creek','LC_Germany Creek',
+    'ST_Deep Creek','ST_West Twin River*','ST_East Twin River'))
 
 # #leaves culverts, falls, fishladders etc.
 # emap$transects |> count(channel_unit_code_abrvd, channel_unit_code_desc) |> print(n=100)
@@ -368,10 +370,16 @@ hab$site_meta <- emap$reaches_sampled |>
     across(c(x_lon, x_lat), list(mean = ~mean(., na.rm = T))),
     .by = c("cmplx_abrv", "cmplx_desc", "strm", "site")
   ) |>
+  mutate(
+    strm = if_else(
+      str_detect(strm, "Stavis|Mill|West"),
+      paste0(strm, "*"), 
+      strm) |> 
+      factor(levels = names(pal_strm))
+  ) |> 
   unite("cmplx_strm", cmplx_abrv, strm, remove=F) |> 
   mutate(
     cmplx_strm = factor(cmplx_strm, levels = names(pal_cmplx_strm)),
-    strm = factor(strm, levels = names(pal_strm)),
     resto_add = as.integer(str_sub(site,4,6)) > 899
   ) |> 
   arrange(cmplx_desc, strm, year_min, site) 
@@ -382,7 +390,14 @@ hab$site_meta <- emap$reaches_sampled |>
 #the distinct() removes ~50 cases in HC from 2007 and 2008 of transect rows that are "X|Y|Z" lettered but are exact duplicates bankfull, wetted and depth measures
 hab$transects <- emap$transects |> 
   filter(!(channel_unit_code_abrvd %in% transects_excluded)) |> 
-  mutate(tsct_lett = str_remove_all(transect_letter, "X|Y|Z")) |> #91765x23
+  mutate(
+    strm = if_else(
+      str_detect(strm, "Stavis|Mill|West"),
+      paste0(strm, "*"), 
+      strm) |> 
+      factor(levels = names(pal_strm)),
+    tsct_lett = str_remove_all(transect_letter, "X|Y|Z")
+    ) |>
   distinct(
     cmplx_desc, strm, site, year, tsct_lett,
     pool_non_pool_desc, channel_unit_code_abrvd, channel_unit_code_desc,
@@ -436,6 +451,13 @@ hab$transects_site_year <- hab$transects |>
   ) |>  
   full_join(
     emap$substrate |> 
+      mutate(
+        strm = if_else(
+          str_detect(strm, "Stavis|Mill|West"),
+          paste0(strm, "*"), 
+          strm) |> 
+          factor(levels = names(pal_strm))
+      ) |> 
       count(strm, site, year,
             transect_substrate_size_clas_abrvd, 
             transect_substrate_size_clas_desc) |> 
@@ -529,7 +551,14 @@ hab$transects_site_year <- hab$transects |>
 hab$lwd_site_year <- emap$lwd |>
   #count(diameter_code, diameter_desc, lgth_code, lgth_desc)
   #coerce -9999 to NA
-  mutate(lwd_cnt = if_else(lwd_cnt < 0, NA_integer_, lwd_cnt)) |> #1mil x 17
+  mutate(
+    strm = if_else(
+      str_detect(strm, "Stavis|Mill|West"),
+      paste0(strm, "*"), 
+      strm) |> 
+      factor(levels = names(pal_strm)),
+    lwd_cnt = if_else(lwd_cnt < 0, NA_integer_, lwd_cnt)
+    ) |> #1mil x 17
   summarise(
     tot_lwd_cnt = sum(lwd_cnt, na.rm=T)
     , .by = c("strm", "site", "year", "diameter_code", "lgth_code")
@@ -565,6 +594,14 @@ hab$lwd_site_year <- emap$lwd |>
                d30_l20 + d30_l30 + 
                d40_l20 + d40_l30,
     across(starts_with("lwd"), list(per100 = ~100 * (. / tot_srvy_lgth)))
+    ,
+    #using lower bounds of size classes for more conservative estimate?
+    vlwd_vol = d20_l20 * (pi * 0.15^2 * 5) + 
+      d20_l30 * (pi * 0.15^2 * 15) + 
+      d30_l20 * (pi * 0.3^2 * 5) + 
+      d30_l30 * (pi * 0.3^2 * 15) + 
+      d40_l20 * (pi * 0.4^2 * 5) + 
+      d40_l30 * (pi * 0.4^2 * 15)
   )
 
 #### 5. sites to include
@@ -572,6 +609,20 @@ hab$incl_sites <- hab$site_meta |> #287
   #filter(year_n >= 10) #251
   filter(year_n > 3 & year_n/year_diff > 0.5) |> arrange(year_n) |> #print(n=20) #269, adds mostly newer/recent but consistent sites
   select(site)
+# #excluded
+# emap$reaches_sampled |>
+#   summarise(
+#     across(c(year), list(min = min, max = max)),
+#     year_diff = year_max - year_min + 1,
+#     year_n = n(),
+#     .by = c("cmplx_abrv", "cmplx_desc", "strm", "site")
+#   ) |> 
+#   anti_join(
+#     hab$incl_sites, by = "site"
+#   ) |> 
+#   arrange(cmplx_desc, year_n)
+
+hab$site_meta |> count(year_n) |> arrange(desc(year_n))
 
 #### 6. summarize measures across years per site and add back to site_meta
 #first filtering to included sites
@@ -618,7 +669,9 @@ hab$site_meta <- hab$site_meta |>
         across(
           c(
             lwd_all, lwd_all_per100,
-            vlwd = lwd_no10, vlwd_per100 = lwd_no10_per100
+            vlwd = lwd_no10, 
+            vlwd_per100 = lwd_no10_per100,
+            vlwd_vol
           ),
           list(
             mean = ~mean(., na.rm = T),
@@ -650,7 +703,9 @@ hab$site_year <- left_join(
     pool_depth = pool_depth_mean,
     tot_srvy_lgth,
     lwd_all, lwd_all_per100,
-    vlwd = lwd_no10, vlwd_per100 = lwd_no10_per100
+    vlwd = lwd_no10, 
+    vlwd_per100 = lwd_no10_per100,
+    vlwd_vol
   ) |> #summary()
   group_by(cmplx_strm, strm, site) |> 
   complete(year = min(hab$site_meta$year_min):max(hab$site_meta$year_max)) |> 
@@ -673,6 +728,9 @@ hab$sf_site_year <- hab$site_year |>
 #### final 'clean' objects broken from list for EDA and fitting
 #left as extra step to allow last minute wrangling while preserving upstream hab-list versions
 site_meta <- hab$site_meta 
+sf_site_meta <- site_meta |>
+  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |>
+  sf::st_transform(sf::st_crs(2927))
 site_year <- hab$site_year
 sf_site_year <- hab$sf_site_year
 #whole-stream per-year distributional moments across sites[year]
@@ -680,6 +738,7 @@ sf_site_year <- hab$sf_site_year
 #declaration begins from already-site-filtered object
 strm_year <- site_year |>  #as_tibble(sf_site_year) |> 
   summarise(
+    n_site_with_bnk = length(na.omit(bankfull_width)),
     across(
       c(
         bankfull_width,
@@ -689,7 +748,8 @@ strm_year <- site_year |>  #as_tibble(sf_site_year) |>
         pool_depth,
         tot_srvy_lgth,
         lwd_all, lwd_all_per100,
-        vlwd, vlwd_per100
+        vlwd, vlwd_per100,
+        vlwd_vol
         ),
       list(
         min = ~min(., na.rm = T),
@@ -705,42 +765,35 @@ strm_year <- site_year |>  #as_tibble(sf_site_year) |>
 
 rm(emap)
 
-save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/free_mscpt/frontiers_imw_hab_mscpt_fig_tab_",str_remove_all(Sys.Date(),"-") |> str_sub(3,8),".RData"))
+save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_",str_remove_all(Sys.Date(),"-") |> str_sub(3,8),".RData"))
 
 ```
 
+Observations were first summarized across transects per site per year. Average annual site pool depth was calculated as the arithmetic mean of the deepest (thalweg) depth measured at transects denoted as intersecting pools. The proportion of gravel was calculated by dividing the number of points classed as coarse or fine gravel by the total count of substrate points (e.g., per site-year, typically 21 transects with 5 points per transect). The density of very large wood was calculated as the counts of pieces >= 0.3m diameter and at least 5m in length, normalized by the total surveyed length between site transects and multiplied by 100. The proportion of pools was the number of transects intersecting a channel pool form, divided by the total number of transects per site per year, and the average width to depth ratio was the mean of per transect bankfull channel width divided by thalweg depth.
 
-
-```{r table_stream_sites_metadata}
-#mod from Nov23 ver?
-```
-
- - descriptions of measures
- - measures were summarized...
- 
-Mann-Kendall (MK) detects consistent directional change (monotonic increase or decrease) to answer questions such as, "Did the proportion of gravel substrate throughout sampled sites in the stream network increase over the study duration?"
-
-To account for the temporal autocorrelation evident in many of the time series of yearly whole-stream averages, trends were examined with the modified MK test in [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/) (Kong and Song 2024), which implements the approach of Hamed and Rao (1998).
+Following extensive exploratory analysis, these site-year measures were then assessed for patterns of variation through time, among sites within streams and across streams and complexes. As indicators of 'whole-stream' habitat condition, the per year mean across sites within each stream was also calculated, and these stream-year averages were examined for patterns of change. Mann-Kendall (MK) non-parametric trend tests are a robust and well-established approach to detecting consistent directional change (monotonic increase or decrease) without assumptions of normality in the sample distribution. This simple method was chosen for presentation after results showed qualitative agreement with various other statistical approaches that require additional assumptions and parameter interpretation. The Sen's slope and statistical significance estimate offer insight into questions such as, "Did the proportion of gravel substrate throughout sampled sites in the stream network increase over the study duration?" To account for the temporal autocorrelation evident in many of the time series of yearly whole-stream averages, all trend calculations used the modified MK test in [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/) (Kong and Song 2024), which implements the approach of Hamed and Rao (1998).
 
 
 # Results & Discussion
 
-Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure SVN). 
+*[I have focused on the 3 measures that I am most comfortable describing. Clearly, more could be said regarding the proportion-pools and the W:D, but I am holding off until further conversation. For example, the proportion of pools within sites showed a significant positive trend in each of the Hood Canal streams other than Seabeck Creek, as well as in Deep Creek. However, I am not confident in whether this has any ecological/geomorphic significance.]*
 
-**[I have focused on the 3 measures that I am most comfortable describing]**
+Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure SVN). 
 
 Indeed, ranges in the proportion of gravel substrate differed as much or more between sites within streams as between streams (Table SVN). All streams included sites with maximum ranges greater than 0.5, and 7 of 10 streams had much less variable sites with ranges < 0.2, including 0 or nearly 0 difference through time in Stavis, Big Beef, Mill and Abernathy creeks. The per-stream average ranges fell between 0.33 (Stavis) and 0.5 (Germany), with the Lower Columbia streams grouped relatively closely, and the Straits, Little Anderson and Seabeck Creeks also grouped around an average range of approximately 0.4. In other words, all streams included a preponderance of sites with modest change through time in the proportion of gravel substrate as well as several locations characterized by little to no change and several with very substantial variation.
 
 Similarly, site differed as much or more within streams as between streams in terms of the range through time in average pool depth. Ranges of 0 or nearly 0 were present in all streams, and the difference among streams in average range, from 0.2 in Little Anderson Creek to 0.5 in Abernathy Creek, was less than the difference between minimum and maximum ranges in all streams. That is, every stream included locations with pool depths that exhibited very little fluctuation as well as those that showed major change through time. In terms of the absolute magnitude of difference in measured depth, the degree of temporal variation was related as much to position within the stream network as it was to which stream network.
 
 Per-site large wood density showed somewhat greater separation among complexes and streams, although each stream included high and low variation sites. The maximum and average ranges in the Straits streams were larger than in Hood Canal or the Lower Columbia, although every stream other than Mill Creek contained sites with ranges as large or larger than the Straits average. 
-**[Seems like more could be said here, esp w/r/t LWD additions, but also going to describe in trends section...]**
+*[Seems like more could be said here, esp w/r/t LWD additions, but also going to describe in trends section...]*
 
-Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, these long term monitoring data showed streams were consistent in having within-network spatial variation in the magnitude of temporal variation, a finding that clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). For the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them. 
-**[For example...stop adding wood to transport reaches?]**
+Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, these long term monitoring data showed streams were consistent in having within-network spatial variation in the magnitude of temporal variation, a finding that clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). For the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them.
+
+*[For example...stop adding wood to transport reaches?]*
 
 ```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
 d <- site_meta |> #glimpse()
+  #filter(year_n > 16) |> 
   select(cmplx_strm, site, 
          ends_with("min"), ends_with("max"), 
          -starts_with("year"), 
@@ -756,11 +809,6 @@ d <- site_meta |> #glimpse()
   pivot_wider(names_from = m, values_from = value) |> 
   mutate(
     site_rng = max - min,
-    cmplx_strm = if_else(
-      str_detect(cmplx_strm, "Stavis|Mill|West"),
-      paste0(cmplx_strm, "*"), 
-      cmplx_strm) |> 
-      factor(levels = names(pal_cmplx_strm))
   ) |> 
   drop_na(site_rng) |> 
   filter(is.finite(site_rng))
@@ -824,15 +872,7 @@ d_gt <- d |>
     ,.by = c(cmplx_strm, name)
   ) |>
   left_join(
-    distinct(site_meta, cmplx_strm, cmplx_desc) |> 
-      mutate(
-        cmplx_strm = if_else(
-          str_detect(cmplx_strm, "Stavis|Mill|West"),
-          paste0(cmplx_strm, "*"), 
-          cmplx_strm) |> 
-          factor(levels = names(pal_cmplx_strm))
-      )
-    , by = "cmplx_strm"
+    distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm"
   ) |> 
   pivot_wider(names_from = name, values_from = contains("site_rng")) |> 
   select(
@@ -854,7 +894,8 @@ d_gt |>
   tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
   tab_spanner("Ppn. pools", contains("pct_pool")) |> 
   tab_spanner("Pool depth", contains("pool_depth")) |> 
-  tab_spanner("VLWD/100m", contains("vlwd")) |> 
+  tab_spanner("VLWD/100m", contains("per100")) |> 
+  tab_spanner("VLWD vol.", contains("vol")) |> 
   cols_label_with(contains("min"), ~"min") |> 
   cols_label_with(contains("mean"), ~"mean") |> 
   cols_label_with(contains("max"), ~"max") |> 
@@ -877,22 +918,16 @@ d_gt |>
 
 ```
 
-
-In addition to a shared general pattern of within-network heterogeneity in the magnitude of temporal variation, at the watershed scale, consistent directional change was rarely detectable in the time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table TRND, Figure TRND). Furthermore, with the exception of large wood in Abernathy Creek, the detectable trends were weak, failed to indicate separation between treatment and control streams, and did not necessarily suggest in-channel habitat improvement.
+In addition to the shared pattern of within-network heterogeneity in the magnitude of temporal variation, consistent directional change at the watershed scale was rarely detectable in the time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table MK-strm-year, Figure MK-stream-year). Furthermore, with the exception of large wood in Abernathy Creek, the detectable trends were weak, failed to indicate separation between treatment and control streams, and did not necessarily suggest in-channel habitat improvement.
 
 Mann-Kendall (MK) tests for trends in whole-stream interannual change were significant (p < 0.05) for the proportion of gravel substrate in Deep and East Twin Creeks (weakly positive slopes indicating increased gravel prevalence), for mean pool depth in Little Anderson and Deep Creeks (weakly negative slopes indicating shallower pools on average), and for large wood density in Abernathy Creek (modestly strong positive slope indicating increased wood prevalence).
 
-**[The proportion of pools within sites showed a significant positive trend in each of the Hood Canal streams other than Seabeck Creek, as well as in Deep Creek.]**
+Various individual sites did show statistically significant directional shifts through time in several measures (Figure MK-site-year). However, again with the exception of Abernathy Creek's large wood density change, these findings reinforced the conclusions at the scale of the whole-stream averages: relatively weak trends, little treatment-control separation, and little indication of desired habitat improvement.
+
+*[application to practice: restoration effects were only detectable when implemented at sufficient magnitude and duration and extent (i.e., lots of wood, over several years, in enough stream km above monitoring sites)]*
 
 
-Various individual sites did show statistically significant directional shifts through time in several measures (Figure TRND-site), but, again with the exception of Abernathy Creek's large wood density change, these findings reinforced the conclusions at the scale of the whole-stream averages: relatively weak trends, little treatment-control separation, and little indication of desired habitat improvement.
-
-
-
-application to practice: restoration effects were only detectable when implemented at sufficient magnitude and duration and extent (i.e., lots of wood, over several years, in enough stream km above monitoring sites)
-
-
-```{r gt_strm_year_mk}
+```{r tabMK_strm_year, tab.cap="Mann-Kendall trend test results for interannual change in habitat measures, corrected for temporal autocorrelation. "}
 #https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
 
 strm_year_mk <- strm_year |> #glimpse()
@@ -915,17 +950,17 @@ strm_year_mk <- strm_year |> #glimpse()
   unnest_wider(ends_with("_mk"), names_sep = ":") |> 
   select(cmplx_strm, ends_with("pval"), ends_with("slp"))
 
-strm_year_mk_gt <- strm_year_mk |> 
+strm_year_mk |> 
   arrange(cmplx_strm) |> 
   left_join(distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm") |> 
   select(cmplx_desc, cmplx_strm, 
          ends_with("slp"), ends_with("pval"), #so that estimate is left of pval
-         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd") #so that measures are side by side
+         contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("per100"), contains("vol") #so that measures are side by side
          ) |> 
   gt(
     groupname_col = "cmplx_desc", 
-    rowname_col = "cmplx_strm", 
-    caption = "Mann-Kendall trend test results for interannual change in habitat measures"
+    rowname_col = "cmplx_strm"
+    #,caption = "Mann-Kendall trend test results for interannual change in habitat measures"
     ) |> 
   fmt_number(ends_with("pval"), decimals = 2) |> 
   fmt_number(ends_with("slp"), decimals = 4) |> 
@@ -934,7 +969,8 @@ strm_year_mk_gt <- strm_year_mk |>
   tab_spanner("Ppn. gravel", starts_with("pct_gravel")) |> 
   tab_spanner("Ppn. pools", starts_with("pct_pool")) |> 
   tab_spanner("Pool depth", starts_with("pool_depth")) |> 
-  tab_spanner("VLWD/100m", starts_with("vlwd")) |> 
+  tab_spanner("VLWD/100m", contains("per100")) |> 
+  tab_spanner("VLWD vol.", contains("vol")) |> 
   cols_label_with(ends_with("slp"), ~"Sen's") |> 
   cols_label_with(ends_with("pval"), ~"p-val") |> 
   tab_style(style = cell_borders("left"), locations = cells_body(columns = ends_with("slp"))) |> 
@@ -948,41 +984,38 @@ strm_year_mk_gt <- strm_year_mk |>
     columns = c(ends_with("pval")),
     fn = \(x) x <= 0.05 
   )
+```
 
-
-strm_year_mk_gg <- strm_year_mk |> 
+```{r figMK_strm_year, fig.cap="Time series of whole-stream average measures with Mann-Kendall test p-value < 0.05. "}
+strm_year_mk |> 
   pivot_longer(-cmplx_strm) |> 
   separate(name, into = c("name","stat"), sep = "_mk:") |> 
   pivot_wider(names_from = stat, values_from = value) |> 
-  filter(pval < 0.05) |> 
+  filter(pval < 0.05) |>
+  mutate(cmplx_strm = as.character(cmplx_strm)) |> 
+  arrange(name) |> 
   mutate(
     gg = map2(
-      cmplx_strm, name,
+      name, cmplx_strm,
       ~strm_year |> 
-        filter(cmplx_strm == .x) |> 
-        select(cmplx_strm, year, yval = all_of(paste0(.y,"_mean"))) |> 
+        filter(cmplx_strm == .y) |> 
+        select(cmplx_strm, year, yval = all_of(paste0(.x,"_mean"))) |> 
         ggplot(aes(year, yval, color = cmplx_strm)) + 
         geom_line(linetype = 2, show.legend = F) + 
         geom_point(show.legend = F) + 
         #geom_smooth(se = F, show.legend = F) + 
         scale_color_manual(values = pal_cmplx_strm) +
-        labs(x = "", y = .y, subtitle = .x)
+        labs(x = "", y = .x, subtitle = .y)
     )
   ) |> 
   pull(gg) |> 
-  wrap_plots(ncol = 2) +
-  plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
+  wrap_plots(ncol = 3) #+plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
 
-# #layout here is finicky but not fussing for now
-# wrap_table(strm_year_mk_gt, panel = "full") / strm_year_mk_gg + 
-#   plot_annotation(tag_levels = "a")
-
-strm_year_mk_gt
-
-strm_year_mk_gg
 ```
 
-```{r figTRND_site_year_mk}
+\n
+
+```{r figMK_site_year, fig.cap="Individual site very large wood density through time. Colored series indicate sites with significant (p < 0.05) Mann-Kendall trends, overlaid on the remaining sites (light gray)."}
 site_year_mk <- site_year |> #glimpse()
   select(
     cmplx_strm, site, year, 
@@ -1001,37 +1034,42 @@ site_year_mk <- site_year |> #glimpse()
   select(cmplx_strm, site, ends_with("pval"), ends_with("slp")) |> 
   pivot_longer(-c(cmplx_strm, site))
 
-
 site_year |> 
   select(
     cmplx_strm, site, year, 
-    bankfull_W_D, pct_gravel, pct_pools, pool_depth, vlwd_per100
+    bankfull_W_D, pct_gravel, pct_pools, pool_depth, vlwd_per100, vlwd_vol
   ) |> 
   pivot_longer(-c(cmplx_strm, site, year)) |> 
-  semi_join(
+  #semi_join(
+  left_join(
     site_year_mk |> 
+      select(-cmplx_strm, site, name, pval = value) |> 
       filter(str_detect(name, "pval")) |>  #1345 site-measure tests
-      filter(value < 0.05) |> #166 'signif'
+      filter(pval < 0.05) |> #166 'signif'
       #count(name) |> arrange(desc(n)) #most for wood
       #count(cmplx_strm) |> arrange(desc(n)) #most for Abernathy; note Deep and Stavis very similar to treatment streams in n-signif
-      mutate(name = str_remove(name, "_mk:pval"))
+      mutate(
+        name = str_remove(name, "_mk:pval")
+        )
     ,
     by = c("site","name")    
   ) |> 
+  filter(name == "vlwd_per100") |> 
   split(~name) |> 
   map(
-    ~.x |> 
-      ggplot(aes(year, value, group = site, color = cmplx_strm)) +
-      geom_line() + geom_point() + 
+    ~ggplot(mapping = aes(year, value, group = site, color = cmplx_strm)) +
+      geom_line(data = .x |> filter(is.na(pval)), color = "grey", linewidth = 0.2, show.legend = F) +
+      geom_line(data = .x |> drop_na(pval), linewidth = 1.2, show.legend = F) +
+      geom_point(data = .x |> drop_na(pval), size = 0.3, show.legend = F) +
       scale_color_manual(values = pal_cmplx_strm) +
       facet_wrap(~cmplx_strm, scales = "free") +
-      labs(subtitle = .x$name[1])
+      labs(x = "", y = "", subtitle = .x$name[1])
   )
 
 ```
 
 
-
+**Possible further points (delete/modify as desired)**
 
   - unanticipated limitations of the original treatment-control study design: not enough concentrated 'treatment' interventions because of limited alignment with lead entity priorities and inadequately weighted competition with non-IMW projects
 
@@ -1073,7 +1111,7 @@ Vannote, R. L., Minshall, G. W., Cummins, K. W., Sedell, J. R., and Cushing, C. 
 
 # Supplementary
 
-```{r gg_site_range_horiz_cascade}
+```{r gg_site_range_horiz_cascade, eval=FALSE}
 d |>
   split(~name) |>
   map(
@@ -1092,8 +1130,8 @@ d |>
 
 ```
 
-```{r gg_strm_year_pointrange_series_grid}
-d <- strm_year |> #glimpse()
+```{r gg_strm_year_pointrange_series_grid, eval=FALSE}
+strm_year |> #glimpse()
   select(cmplx_strm, year,
          ends_with("min"), ends_with("mean"), ends_with("max"), 
          -contains("tot_srvy"),
@@ -1106,10 +1144,7 @@ d <- strm_year |> #glimpse()
     m = if_else(m == "ean","mean",m), #quickfix 
     name = str_remove(name, paste0("_",m)) 
   ) |> 
-  pivot_wider(names_from = m, values_from = value)
-  
-
-d |> 
+  pivot_wider(names_from = m, values_from = value) |> 
   ggplot(aes(year, mean, color = cmplx_strm)) +
   geom_line(linetype = 2, linewidth = 0.5, show.legend = F) +
   geom_linerange(aes(ymin = min, ymax = max), linewidth = 0.5, show.legend = F) +
@@ -1124,11 +1159,7 @@ d |>
 
 ```
 
-## whole stream KPSS
-
-I think we could leave this out or relegate to Supplementary, but I'm including for now as a reinforcement of the finding that few whole-stream series exhibit linear trends. Test detects non-stationarity, typically in the context of ARIMA-type time series models to determine the need for differencing to remove trends. Null hypothesis of the test is stationarity, so p<0.05 rejects (i.e., in favor of linear trend; see [https://otexts.com/fpp3/stationarity.html](https://otexts.com/fpp3/stationarity.html))
-
-```{r strm_year_ts_kpss}
+```{r strm_year_ts_kpss, eval=FALSE}
 # library(tsibble)
 # library(feasts) #loads: library(fabletools)
 # library(fable)
@@ -1194,8 +1225,7 @@ strm_year_ts_kpss |>
 
 ```
 
-
-```{r dew765}
+```{r dew765, eval=FALSE}
 site_year |> filter(site == "DEW765") |> ggplot(aes(year, vlwd_per100)) + geom_line() + geom_point()
 
 sf_site_year |> 
@@ -1206,41 +1236,5 @@ sf_site_year |>
   geom_sf(aes(size = vlwd)) +
   facet_wrap(~year)
 
-```
-
-
-```{r hpsd_mtg_slides}
-sf_site_meta <- site_meta |> 
-  st_as_sf(coords = c("x_lon_mean", "x_lat_mean"), crs = sf::st_crs(4326)) |> 
-  sf::st_transform(sf::st_crs(2927))
-
-mapview::mapview(sf_site_meta, zcol = "cmplx_strm", col.regions = pal_cmplx_strm)
-mapview::mapview(sf_site_meta, zcol = "cmplx_strm", col.regions = "gold")
-
-
-site_year |> 
-  filter(str_detect(strm, "Stavis")) |> 
-  ggplot(aes(year, vlwd_per100, group = site)) +
-  geom_line() + geom_point()
-
-strm_year |> 
-  filter(str_detect(cmplx_strm, "Stavis")) |> 
-  ggplot() +
-  geom_ribbon(aes(year, ymin = vlwd_per100_min, ymax = vlwd_per100_max), fill = pal_cmplx_strm[1], alpha = 0.5) +
-  geom_ribbon(aes(year, ymin = vlwd_per100_q25, ymax = vlwd_per100_q75), fill = pal_cmplx_strm[1], alpha = 0.7) +
-  geom_line(aes(year, vlwd_per100_q50), color = pal_cmplx_strm[1]) +
-  geom_point(aes(year, vlwd_per100_q50), color = pal_cmplx_strm[1]) +
-  labs(y = "vlwd_per100")
-                
-plotly::plot_ly(
-  data = site_year |> 
-    filter(str_detect(strm, "Stavis")) |> drop_na(pct_pools)
-  ,
-  type = "scatter", mode = "line+point",
-  x = ~year, name = ~site,
-  #y = ~pct_pools
-  #y = ~pct_gravel
-  y = ~vlwd_per100
-)
 ```
 
