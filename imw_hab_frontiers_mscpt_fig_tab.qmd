@@ -33,22 +33,6 @@ theme_set(theme_minimal())
 #version without fig/table specific objects
 load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250205.RData")
 
-
-#### 2024 obs mostly/all complete now except for BBC?
-as_tibble(sf_site_year) |> filter(year == 2024) |> count(cmplx_strm)
-#this version includes filled NAs: site_year |> filter(year == 2024) |> count(cmplx_strm)
-site_year |> filter(cmplx_strm == "HC_Big Beef Creek" & year == 2024) |> print(n=Inf)
-
-#will rebuild after checking with Will and Kevin
-strm_year <- strm_year |> 
-  filter(
-    !(cmplx_strm == "HC_Big Beef Creek" & year == 2024)
-  )
-sf_site_year <- sf_site_year |> 
-  filter(
-    !(cmplx_strm == "HC_Big Beef Creek" & year == 2024)
-  )
-
 ```
 
 # Abstract
@@ -171,6 +155,7 @@ At each site, measurements and counts are made at and between 21 equally spaced 
 
 ```{r emap_pull, echo=FALSE, eval=FALSE}
 #declare 'con_emap' odbc::dbConnect
+library(tidyverse)
 
 emap <- list()
 
@@ -193,42 +178,28 @@ emap$reaches_sampled <- tbl(
     year = Srvy_Yr,
     Reach_Site_Id,
     Reach_Survey_Id,
-    STREAM_NAME_LLID_100_Code,
     x_lat = Xsite_Lat_Coord,
     x_lon = Xsite_Lngtd_Coord,
     smpl_mthd_desc = SAMPL_METHOD_Desc,
     rch_lgth_meas_desc = REACH_LNGTH_MEAS_LOC_Desc,
-    Xsite_Distnc_Up_Meas, Xsite_Distnc_Down_Meas,
-    Total_Reach_Lgth,
-    Move_Reach_Ind
+    Xsite_Distnc_Up_Meas, Xsite_Distnc_Down_Meas
+    #STREAM_NAME_LLID_100_Code, Total_Reach_Lgth, Move_Reach_Ind
   ) |>
   collect() |>
   rename_with(tolower) |>
   mutate(
     across(
-      c(xsite_distnc_up_meas, xsite_distnc_down_meas, total_reach_lgth),
+      c(xsite_distnc_up_meas, xsite_distnc_down_meas),
       ~if_else(. < 0, NA_integer_, .)
     ),
     up_down_lgth = xsite_distnc_up_meas + xsite_distnc_down_meas
-  ) |>
-  left_join(
-    tbl(
-      con_emap,
-      dbplyr::in_schema("dbo", "ZCORE_Transects_Compass_Bearing_Distance_V")
-      ) |>
-      filter(Srvy_Yr > 2006) |>
-      select(Srvy_Yr, Reach_Survey_Id, Reach_Site_Id, Transect_Id, Transect_Compass_Distnc_Meas) |>
-      collect() |>
-      mutate(Transect_Compass_Distnc_Meas = if_else(Transect_Compass_Distnc_Meas < 0, NA_real_, Transect_Compass_Distnc_Meas)) |>
-      group_by(year = Srvy_Yr, reach_site_id = Reach_Site_Id) |>
-      summarise(cmpss_dist_lgth = sum(Transect_Compass_Distnc_Meas), .groups = 'drop')
-  , by = c("year", "reach_site_id")
   )
 
 
 #bankfull, wetted width, thalweg depth, size channels, bars, etc.
 #usually ~21 transects per site per year
 #limited to 2007 forward, replacing -9999 with NAs
+#dropping 'code' LU fields, 'verify' date & time, crewname
 emap$transects <- tbl(
   con_emap,
   dbplyr::in_schema("dbo", "ZCORE_Transects_V")
@@ -331,8 +302,9 @@ saveRDS(emap, "emap_pull.rds")
 #!!hab object here is NOT same as in high_var_stream_hab chunk 'build_hab'!!
 # that chunk high_var_stream_hab>>build_hab has more comments on qaqc and wrangling checks
 
-file.info("~/O/code/imw/emap_pull.rds")['mtime']
-emap <- readRDS("~/O/code/imw/emap_pull.rds")
+#file.info("~/O/code/imw/emap_pull.rds")['mtime']
+file.info("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/emap_pull.rds")['mtime']
+emap <- readRDS("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/emap_pull.rds")
 names(emap)
 
 #plotting palettes: W to E within complex
@@ -371,6 +343,7 @@ hab$site_meta <- emap$reaches_sampled |>
     .by = c("cmplx_abrv", "cmplx_desc", "strm", "site")
   ) |>
   mutate(
+    cmplx_desc = str_replace(cmplx_desc, "Straits", "Strait"),
     strm = if_else(
       str_detect(strm, "Stavis|Mill|West"),
       paste0(strm, "*"), 
@@ -391,30 +364,30 @@ hab$site_meta <- emap$reaches_sampled |>
 hab$transects <- emap$transects |> 
   filter(!(channel_unit_code_abrvd %in% transects_excluded)) |> 
   mutate(
+    cmplx_desc = str_replace(cmplx_desc, "Straits", "Strait"),
     strm = if_else(
       str_detect(strm, "Stavis|Mill|West"),
       paste0(strm, "*"), 
       strm) |> 
       factor(levels = names(pal_strm)),
-    tsct_lett = str_remove_all(transect_letter, "X|Y|Z")
+    tsct_lett = str_remove_all(transect_letter, "X|Y|Z") #but retaining orig 'transect_letter'
     ) |>
   distinct(
-    cmplx_desc, strm, site, year, tsct_lett,
+    cmplx_desc, strm, site, year, reach_survey_id, tsct_lett,
     pool_non_pool_desc, channel_unit_code_abrvd, channel_unit_code_desc,
     transect_bankfull_wdth_meas, transect_wet_wdth_meas, transect_thalweg_dpth_meas,
     .keep_all = T
     ) |> 
-  #glimpse() #91715x23
-  #leaving out wetted width, bar indicator and width
+  #dropping bar indicator and width
   left_join(hab$site_meta |> distinct(strm, cmplx_strm), by = "strm") |> 
   select(
-    cmplx_strm, cmplx_desc, strm, site, year, x_lon, x_lat,
+    cmplx_strm, cmplx_desc, strm, site, year, reach_survey_id, x_lon, x_lat, transect_id,
     tsct_lett, transect_letter,
     side_chan = transect_extra_side_channel_ind,
     fish_prst = transect_fish_present_ind,
-    #wet_wdth = transect_wet_wdth_meas,
     bnk_wdth = transect_bankfull_wdth_meas,
     bnk_hght = transect_bankfull_hgt_meas,
+    wet_wdth = transect_wet_wdth_meas,
     thl_dpth = transect_thalweg_dpth_meas,
     pool_non_pool_desc, 
     channel_unit_code_abrvd, channel_unit_code_desc
@@ -437,18 +410,18 @@ hab$transects_site_year <- hab$transects |>
     pct_supp = n_supp / n_tsct,
     n_pools = sum(pool_non_pool_desc == "Pool"), #includees 'Beaver Pond'
     pct_pools = n_pools / n_tsct,
-    .by = c("cmplx_strm", "strm", "site", "year")
+    .by = c("cmplx_strm", "strm", "site", "year", "reach_survey_id")
   ) |> 
   full_join(
     hab$transects |> 
       filter(pool_non_pool_desc == "Pool") |> 
       summarise(
         pool_depth_mean = mean(thl_dpth, na.rm = T),
-        .by = c("strm", "site", "year")
+        .by = c("strm", "site", "year", "reach_survey_id")
       ) 
     ,
-    by = c("strm", "site", "year")
-  ) |>  
+    by = c("strm", "site", "year", "reach_survey_id")
+  ) |> 
   full_join(
     emap$substrate |> 
       mutate(
@@ -458,27 +431,27 @@ hab$transects_site_year <- hab$transects |>
           strm) |> 
           factor(levels = names(pal_strm))
       ) |> 
-      count(strm, site, year,
+      count(strm, site, year, reach_survey_id,
             transect_substrate_size_clas_abrvd, 
             transect_substrate_size_clas_desc) |> 
-      group_by(strm, site, year) |>
+      group_by(strm, site, year, reach_survey_id) |>
       mutate(n_pct = n / sum(n)) |> 
       filter(transect_substrate_size_clas_abrvd %in% c("GC", "GF")) |> 
-      summarise(pct_gravel = sum(n_pct), .groups = "drop"), #4220x4
-    by = c("strm", "site", "year")
+      summarise(pct_gravel = sum(n_pct), .groups = "drop"), 
+    by = c("strm", "site", "year", "reach_survey_id")
   ) |> 
-  #now add width
+  #now add width; bringing back 'wetted'
   full_join(
     hab$transects |> 
       #first sum per cross-sectional transect position, doing nothing for many non-split instances
       summarise(
-        across(c(bnk_wdth), sum), 
-        .by = c("strm", "site", "year", "tsct_lett")
+        across(c(bnk_wdth, wet_wdth), sum), 
+        .by = c("strm", "site", "year", "reach_survey_id", "tsct_lett")
       ) |> 
       #then aggregate to site-year distributional measures across transects
       summarise(
         across(
-          c(bnk_wdth),
+          c(bnk_wdth, wet_wdth),
           list(
             mean = ~mean(., na.rm = T),
             sd = ~sd(., na.rm = T),
@@ -488,34 +461,35 @@ hab$transects_site_year <- hab$transects |>
             #can easily calc later, leaving off until known pref to calc here
             #,trsct_cv = ~sd(., na.rm =T) / mean(., na.rm = T)
           )),
-        .by = c("strm", "site", "year")
+        .by = c("strm", "site", "year", "reach_survey_id")
       ), 
-    by = c("strm", "site", "year")
+    by = c("strm", "site", "year", "reach_survey_id")
   ) |>  
   #now add width:depth
+  #shift to wetted-thalweg, bank-bank following call with KK/WD/KS
   #summarization throws warnings whenever grouped vector is empty
   full_join(
     hab$transects |> 
-      #calc W:D at every transect, including lateral 'supplementary'  
+      #calc W:D at every transect, including lateral 'supplementary'
+      #plenty of Inf and NA
       mutate(
-        bnk_w_thl_d = bnk_wdth / thl_dpth,
+        wet_w_thl_d = wet_wdth / thl_dpth,
         bnk_w_bnk_d = bnk_wdth / bnk_hght
       ) |> 
       #then aggregate to site-year distributional measures across transects
       summarise(
         across(
-          c(bnk_w_thl_d, bnk_w_bnk_d),
+          c(wet_w_thl_d, bnk_w_bnk_d),
           list(
             mean = ~mean(., na.rm = T),
             sd = ~sd(., na.rm = T),
             min = ~min(., na.rm = T),
-            #med = ~median(., na.rm = T),
             max = ~max(., na.rm = T)
           )),
-        .by = c("strm", "site", "year")
+        .by = c("strm", "site", "year", "reach_survey_id")
       ) 
     ,
-    by = c("strm", "site", "year")
+    by = c("strm", "site", "year", "reach_survey_id")
   ) 
 
 #### 4. summarize site-year large wood densities
@@ -539,15 +513,14 @@ hab$transects_site_year <- hab$transects |>
 # 12            40 >0.8 m               30 >15 m     86180
 #here:
 # - combining 'AlI/Part In' and 'Bridged Above'
-# - aggregate over ALL segments per stream-year
-# - join lengths summarized across surveys/sites to strm-year total, calc'd from the up+down lengths
-# previously imposed limit to larger classes here
-# now retaining for full picture of dynamics
-# filter(
-#   ##placement_code == 10, #all/part in
-#   diameter_code > 10, #more than 0.3m dia
-#   lgth_code > 10 #more than 5m long
-# )
+# - aggregate over segments per stream-year
+# - join site-year lengths calc'd from the up+down lengths
+#    - NOW no missing following WD/KS additional qaqc: emap$reaches_sampled |> filter(is.na(up_down_lgth))
+# - and NOW join site-year mean bankfull width to get areal density
+#    - introducing error with "area = total_length * average_width", presumably greater with more sinuosity?
+#       but preferably simpler than attempting trapezoidal calc from top/bottom transect & per-segement lengths
+#       not even clear that per-segment length from 'compass-distance' table would be suitable?
+# - retaining 'all' as well as larger classes; pre-2024 filtered diameter_code & lgth_code > 10, #more than 0.3m dia and 5m long
 hab$lwd_site_year <- emap$lwd |>
   #count(diameter_code, diameter_desc, lgth_code, lgth_desc)
   #coerce -9999 to NA
@@ -558,42 +531,47 @@ hab$lwd_site_year <- emap$lwd |>
       strm) |> 
       factor(levels = names(pal_strm)),
     lwd_cnt = if_else(lwd_cnt < 0, NA_integer_, lwd_cnt)
-    ) |> #1mil x 17
-  summarise(
-    tot_lwd_cnt = sum(lwd_cnt, na.rm=T)
-    , .by = c("strm", "site", "year", "diameter_code", "lgth_code")
-  ) |> #52k x 6
-  mutate(
+    ,
     diameter_code = paste0("d", diameter_code),
     lgth_code = paste0("l", lgth_code)
     ) |> 
   unite("diam_lgth", diameter_code, lgth_code) |> 
-  pivot_wider(names_from = diam_lgth, values_from = tot_lwd_cnt) |> #4394 x 15
+  summarise(
+    #n_seg = length(reach_segment_id),
+    tot_lwd_cnt = sum(lwd_cnt, na.rm=T)
+    , .by = c("strm", "site", "year", "reach_survey_id",
+              "diam_lgth" #"diameter_code", "lgth_code"
+              )
+  ) |>
+  pivot_wider(names_from = diam_lgth, values_from = tot_lwd_cnt) |> 
   left_join(
-    emap$reaches_sampled |>
-      summarise(
-        tot_srvy_lgth = if_else(
-          !is.na(up_down_lgth),
-          up_down_lgth,
-          cmpss_dist_lgth
-        ),
-        .by = c("site", "year")
-      ) #4398 x 3
-    ,
-    by = c("site","year")
+    emap$reaches_sampled |> 
+      select(site, year, reach_survey_id, up_down_lgth)
+    , by = c("site", "year", "reach_survey_id")
+  ) |> 
+  left_join(
+    hab$transects_site_year |> 
+      select(site, year, reach_survey_id, bnk_wdth_mean)
+    , by = c("site", "year", "reach_survey_id")
   ) |> 
   mutate(
     lwd_all = d10_l10 + d10_l20 + d10_l30 + 
               d20_l10 + d20_l20 + d20_l30 + 
               d30_l10 + d30_l20 + d30_l30 + 
-              d40_l10 + d40_l20 + d40_l30,
-    # lwd_no_d10 = d20_l10 + d20_l20 + d20_l30 + 
-    #              d30_l10 + d30_l20 + d30_l30 + 
-    #              d40_l10 + d40_l20 + d40_l30,
+              d40_l10 + d40_l20 + d40_l30
+    ,
     lwd_no10 = d20_l20 + d20_l30 + 
                d30_l20 + d30_l30 + 
-               d40_l20 + d40_l30,
-    across(starts_with("lwd"), list(per100 = ~100 * (. / tot_srvy_lgth)))
+               d40_l20 + d40_l30
+    ,
+    lgth_wdth = up_down_lgth * bnk_wdth_mean
+    ,
+    across(starts_with("lwd"),
+           list(
+             per100 = ~100 * (. / up_down_lgth)
+             ,
+             per_m2 = ~(. / lgth_wdth)
+             ))
     ,
     #using lower bounds of size classes for more conservative estimate?
     vlwd_vol = d20_l20 * (pi * 0.15^2 * 5) + 
@@ -602,7 +580,17 @@ hab$lwd_site_year <- emap$lwd |>
       d30_l30 * (pi * 0.3^2 * 15) + 
       d40_l20 * (pi * 0.4^2 * 5) + 
       d40_l30 * (pi * 0.4^2 * 15)
+  ) |>
+  #exclusions per WD/KS: "QC_RchMeasXsiteDstVsCmpDst_Extrc_Null_XsiteDistances.xlsx"
+  filter(
+    !(year == 2019 & site %in% c(
+      "DEW017","DEW034","DEW073","DEW097","DEW113","DEW125",
+      "DEW273","DEW287","DEW317","DEW477","DEW026","DEW044",
+      "DEW067","DEW110","DEW158","DEW170","DEW630","DEW014",
+      "DEW027","DEW057","DEW080","DEW322"
+    ))
   )
+
 
 #### 5. sites to include
 hab$incl_sites <- hab$site_meta |> #287
@@ -646,7 +634,9 @@ hab$site_meta <- hab$site_meta |>
         across(
           c(
             bankfull_width = bnk_wdth_mean,
-            bankfull_W_D = bnk_w_thl_d_mean,
+            wetted_width = wet_wdth_mean,
+            bankfull_W_D = bnk_w_bnk_d_mean,
+            wetted_W_D = wet_w_thl_d_mean,
             pct_gravel, 
             pct_pools, 
             pool_depth = pool_depth_mean
@@ -665,12 +655,14 @@ hab$site_meta <- hab$site_meta |>
       complete(year = min(hab$site_meta$year_min):max(hab$site_meta$year_max)) |> 
       ungroup() |> #glimpse() #no Inf
       summarise(
-        tot_srvy_lgth_mean = mean(tot_srvy_lgth, na.rm = T),
+        lgth_mean = mean(up_down_lgth, na.rm = T),
+        lgth_wdth_mean = mean(lgth_wdth, na.rm = T),
         across(
           c(
-            lwd_all, lwd_all_per100,
+            lwd_all, lwd_all_per100, lwd_all_per_m2,
             vlwd = lwd_no10, 
             vlwd_per100 = lwd_no10_per100,
+            vlwd_per_m2 = lwd_no10_per_m2,
             vlwd_vol
           ),
           list(
@@ -690,21 +682,24 @@ hab$site_meta <- hab$site_meta |>
 #and coercing Inf to NA
 hab$site_year <- left_join(
   hab$transects_site_year,
-  hab$lwd_site_year,
-  by = c("strm","site","year")
-) |> 
+  hab$lwd_site_year |> select(-bnk_wdth_mean),
+  by = c("strm","site","year","reach_survey_id")
+  ) |> 
   semi_join(hab$incl_sites, by = "site") |> 
   select(
-    cmplx_strm, strm, site, year, n_tsct, n_supp, pct_supp, 
+    cmplx_strm, strm, site, year, reach_survey_id, n_tsct, n_supp, pct_supp, 
     bankfull_width = bnk_wdth_mean,
-    bankfull_W_D = bnk_w_thl_d_mean,
+    wetted_width = wet_wdth_mean,
+    bankfull_W_D = bnk_w_bnk_d_mean,
+    wetted_W_D = wet_w_thl_d_mean,
     pct_gravel, 
     pct_pools, 
     pool_depth = pool_depth_mean,
-    tot_srvy_lgth,
-    lwd_all, lwd_all_per100,
+    up_down_lgth, lgth_wdth,
+    lwd_all, lwd_all_per100, lwd_all_per_m2,
     vlwd = lwd_no10, 
     vlwd_per100 = lwd_no10_per100,
+    vlwd_per_m2 = lwd_no10_per_m2,
     vlwd_vol
   ) |> #summary()
   group_by(cmplx_strm, strm, site) |> 
@@ -746,9 +741,9 @@ strm_year <- site_year |>  #as_tibble(sf_site_year) |>
         pct_gravel, 
         pct_pools, 
         pool_depth,
-        tot_srvy_lgth,
-        lwd_all, lwd_all_per100,
-        vlwd, vlwd_per100,
+        up_down_lgth,
+        lwd_all, lwd_all_per100, lwd_all_per_m2,
+        vlwd, vlwd_per100, vlwd_per_m2,
         vlwd_vol
         ),
       list(
