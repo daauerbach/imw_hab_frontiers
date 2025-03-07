@@ -30,8 +30,7 @@ theme_set(theme_minimal())
 # dir_data_common <- "~/T/DFW-Team WDFW Watershed Synthesis - data_common"
 # epsg <- 2927 #WA state standard; NAD83(HARN)/ft
 
-#version without fig/table specific objects
-load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250205.RData")
+load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250307.RData")
 
 ```
 
@@ -771,8 +770,6 @@ Following extensive exploratory analysis, these site-year measures were then ass
 
 # Results & Discussion
 
-*[I have focused on the 3 measures that I am most comfortable describing. Clearly, more could be said regarding the proportion-pools and the W:D, but I am holding off until further conversation. For example, the proportion of pools within sites showed a significant positive trend in each of the Hood Canal streams other than Seabeck Creek, as well as in Deep Creek. However, I am not confident in whether this has any ecological/geomorphic significance.]*
-
 Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure SVN). 
 
 Indeed, ranges in the proportion of gravel substrate differed as much or more between sites within streams as between streams (Table SVN). All streams included sites with maximum ranges greater than 0.5, and 7 of 10 streams had much less variable sites with ranges < 0.2, including 0 or nearly 0 difference through time in Stavis, Big Beef, Mill and Abernathy creeks. The per-stream average ranges fell between 0.33 (Stavis) and 0.5 (Germany), with the Lower Columbia streams grouped relatively closely, and the Straits, Little Anderson and Seabeck Creeks also grouped around an average range of approximately 0.4. In other words, all streams included a preponderance of sites with modest change through time in the proportion of gravel substrate as well as several locations characterized by little to no change and several with very substantial variation.
@@ -780,11 +777,8 @@ Indeed, ranges in the proportion of gravel substrate differed as much or more be
 Similarly, site differed as much or more within streams as between streams in terms of the range through time in average pool depth. Ranges of 0 or nearly 0 were present in all streams, and the difference among streams in average range, from 0.2 in Little Anderson Creek to 0.5 in Abernathy Creek, was less than the difference between minimum and maximum ranges in all streams. That is, every stream included locations with pool depths that exhibited very little fluctuation as well as those that showed major change through time. In terms of the absolute magnitude of difference in measured depth, the degree of temporal variation was related as much to position within the stream network as it was to which stream network.
 
 Per-site large wood density showed somewhat greater separation among complexes and streams, although each stream included high and low variation sites. The maximum and average ranges in the Straits streams were larger than in Hood Canal or the Lower Columbia, although every stream other than Mill Creek contained sites with ranges as large or larger than the Straits average. 
-*[Seems like more could be said here, esp w/r/t LWD additions, but also going to describe in trends section...]*
 
 Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, these long term monitoring data showed streams were consistent in having within-network spatial variation in the magnitude of temporal variation, a finding that clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). For the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them.
-
-*[For example...stop adding wood to transport reaches?]*
 
 ```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
 d <- site_meta |> #glimpse()
@@ -795,6 +789,8 @@ d <- site_meta |> #glimpse()
          -contains("lwd_all"), #only 'very' large wood
          -vlwd_min, -vlwd_max #use density not counts
          , -contains("bankfull_width")
+         , -contains("wetted")
+         , -contains("_m2")
          ) |> 
   pivot_longer(-c(cmplx_strm, site)) |> 
   mutate(
@@ -808,23 +804,6 @@ d <- site_meta |> #glimpse()
   drop_na(site_rng) |> 
   filter(is.finite(site_rng))
 
-# #just density_ridges
-# d |> 
-#   ggplot() +
-#   ggridges::geom_density_ridges(
-#     mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm),
-#     scale = 1.8,
-#     alpha = 0.7,
-#     show.legend = F) +
-#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-#   facet_wrap(~name, ncol = 3, scales = "free_x") +
-#   labs(
-#     x = "", y = "",
-#     title = "Stream network variation in temporal variability",
-#     subtitle = "Distributions show per-site interannual ranges"
-#   )
-
-
 d |> 
   ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
   geom_vline(xintercept = 0) +
@@ -832,11 +811,18 @@ d |>
     scale = 0.9,
     alpha = 0.6,
     show.legend = F) +
-  ggdist::stat_dotsinterval(
+  ggdist::stat_dots(
+    #this would work in a split/map pattern but with faceting here: aes(slab_alpha = after_stat(x)),
     orientation = "horizontal",
-    slab_linewidth = 0.1, slab_alpha = 0.7, 
+    alpha = 0.6,
+    show.legend = F
+  ) +
+  ggdist::stat_pointinterval(
+    orientation = "horizontal",
+    color = "black",
     .width = c(0.5, 0.95),
-    shape = 18, stroke = 1, fatten_point = 2, justification = -0.01, #position = ggdist::position_dodgejust(width = 0.5),
+    shape = 3, #18,
+    fatten_point = 3,
     show.legend = F
   ) +
   coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
@@ -846,10 +832,12 @@ d |>
              scales = "free_x") +
   labs(
     x = "", y = ""
-    #,
-    #title = "Stream network variation in temporal variation of habitat measures",
-    #subtitle = "Dots are range (max - min) for individual sites, lower interval shows IQR and among-site median"
+    ,
+    title = "Stream network variation in range of habitat measures through time",
+    subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
   )
+
+ggsave(filename = "fig_SVN_site_range_ridges.png", width = 11, height = 9, dpi = 150, bg = "white")
 ```
 
 ```{r tabSNV_site_range_ridges, tab.cap="Table SNV: Mean, minimum, and maximum range per-site in habitat measures across streams."}
@@ -885,7 +873,7 @@ d_gt |>
   fmt_number(contains("pool_depth"), decimals = 1) |> 
   fmt_number(contains("pct"), decimals = 2) |> 
 #  tab_spanner("Bankfull W", contains("width")) |> 
-  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+  tab_spanner("BnkW:D", contains("W_D")) |> 
   tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
   tab_spanner("Ppn. pools", contains("pct_pool")) |> 
   tab_spanner("Pool depth", contains("pool_depth")) |> 
@@ -928,8 +916,8 @@ Various individual sites did show statistically significant directional shifts t
 strm_year_mk <- strm_year |> #glimpse()
   select(
     cmplx_strm, year, ends_with("_mean"),
-    -tot_srvy_lgth_mean, -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
-    , -contains("bankfull_width")
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
     ) |> 
   # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
   rename_with(~str_remove(., "_mean")) |> 
@@ -959,8 +947,8 @@ strm_year_mk |>
     ) |> 
   fmt_number(ends_with("pval"), decimals = 2) |> 
   fmt_number(ends_with("slp"), decimals = 4) |> 
-  tab_spanner("Bankfull W", contains("width")) |> 
-  tab_spanner("BnkW:ThalD", contains("W_D")) |> 
+#  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:D", contains("W_D")) |> 
   tab_spanner("Ppn. gravel", starts_with("pct_gravel")) |> 
   tab_spanner("Ppn. pools", starts_with("pct_pool")) |> 
   tab_spanner("Pool depth", starts_with("pool_depth")) |> 
@@ -1004,8 +992,9 @@ strm_year_mk |>
     )
   ) |> 
   pull(gg) |> 
-  wrap_plots(ncol = 3) #+plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
+  wrap_plots(ncol = 4) #+plot_annotation(title = "Time series of measures with Mann-Kendall test p-value < 0.05")
 
+#ggsave(filename = "fig_MK_strm_year.png", width = 11, height = 9, dpi = 150, bg = "white")
 ```
 
 \n
@@ -1054,13 +1043,14 @@ site_year |>
   map(
     ~ggplot(mapping = aes(year, value, group = site, color = cmplx_strm)) +
       geom_line(data = .x |> filter(is.na(pval)), color = "grey", linewidth = 0.2, show.legend = F) +
-      geom_line(data = .x |> drop_na(pval), linewidth = 1.2, show.legend = F) +
+      geom_line(data = .x |> drop_na(pval), linewidth = 1.1, show.legend = F) +
       geom_point(data = .x |> drop_na(pval), size = 0.3, show.legend = F) +
       scale_color_manual(values = pal_cmplx_strm) +
       facet_wrap(~cmplx_strm, scales = "free") +
       labs(x = "", y = "", subtitle = .x$name[1])
   )
 
+ggsave(filename = "fig_MK_site_year.png", width = 11, height = 9, dpi = 150, bg = "white")
 ```
 
 
@@ -1106,6 +1096,28 @@ Vannote, R. L., Minshall, G. W., Cummins, K. W., Sedell, J. R., and Cushing, C. 
 
 # Supplementary
 
+```{r fig_strm_year_all, eval=FALSE}
+strm_year |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+  ) |> 
+  # rename_with(~str_replace(., "_mean", "_stream_year_mean")) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  ggplot(aes(year, value, color = cmplx_strm)) + 
+  geom_line(linetype = 2, show.legend = F) + 
+  geom_point(size = 0.7, show.legend = F) + 
+  #geom_smooth(se = F, show.legend = F) + 
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~name + cmplx_strm, ncol = 10, scales = "free") +
+  labs(x = "", y = "", subtitle = "Time series of whole stream mean across sites per year")
+
+ggsave(filename = "fig_strm_year_all.png", width = 16, height = 12, dpi = 150, bg = "white")
+```
+
+
 ```{r gg_site_range_horiz_cascade, eval=FALSE}
 d |>
   split(~name) |>
@@ -1129,9 +1141,9 @@ d |>
 strm_year |> #glimpse()
   select(cmplx_strm, year,
          ends_with("min"), ends_with("mean"), ends_with("max"), 
-         -contains("tot_srvy"),
          -contains("lwd_all"), 
          -vlwd_min, -vlwd_mean, -vlwd_max #use density not counts 
+         ,-contains("up_down"),-contains("bankfull_width")
   ) |> 
   pivot_longer(-c(cmplx_strm, year)) |> 
   mutate(
@@ -1152,6 +1164,7 @@ strm_year |> #glimpse()
     title = "Whole-stream per-year means across sites"
   )
 
+ggsave(filename = "fig_strm_year_pointrange_series_grid.png", width = 16, height = 12, dpi = 150, bg = "white")
 ```
 
 ```{r strm_year_ts_kpss, eval=FALSE}
