@@ -804,7 +804,51 @@ d <- site_meta |> #glimpse()
   drop_na(site_rng) |> 
   filter(is.finite(site_rng))
 
+# d |> 
+#   ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
+#   geom_vline(xintercept = 0) +
+#   ggridges::geom_density_ridges(
+#     scale = 0.9,
+#     alpha = 0.6,
+#     show.legend = F) +
+#   ggdist::stat_dots(
+#     #this would work in a split/map pattern but with faceting here: aes(slab_alpha = after_stat(x)),
+#     orientation = "horizontal",
+#     alpha = 0.6,
+#     show.legend = F
+#   ) +
+#   ggdist::stat_pointinterval(
+#     orientation = "horizontal",
+#     color = "black",
+#     .width = c(0.5, 0.95),
+#     shape = 3, #18,
+#     fatten_point = 3,
+#     show.legend = F
+#   ) +
+#   coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
+#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+#   facet_wrap(~name, 
+#              nrow = 1, #ncol = 3,
+#              scales = "free_x") +
+#   labs(
+#     x = "", y = ""
+#     ,
+#     title = "Stream network variation in range of habitat measures through time",
+#     subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
+#   )
+# 
+# ggsave(filename = "fig_SVN_site_range_ridges.png", width = 11, height = 9, dpi = 150, bg = "white")
+
 d |> 
+    mutate(
+    cmplx_strm = factor(cmplx_strm, levels =   c(
+      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
+      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
+      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
+    ))
+    ,
+    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+  ) |> 
   ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
   geom_vline(xintercept = 0) +
   ggridges::geom_density_ridges(
@@ -832,12 +876,13 @@ d |>
              scales = "free_x") +
   labs(
     x = "", y = ""
-    ,
-    title = "Stream network variation in range of habitat measures through time",
-    subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
+    # ,
+    # title = "Stream network variation in range of habitat measures through time",
+    # subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
   )
 
-ggsave(filename = "fig_SVN_site_range_ridges.png", width = 11, height = 9, dpi = 150, bg = "white")
+ggsave(filename = "fig_SVN_site_range_ridges2.png", width = 11, height = 9, dpi = 300, bg = "white")
+
 ```
 
 ```{r tabSNV_site_range_ridges, tab.cap="Table SNV: Mean, minimum, and maximum range per-site in habitat measures across streams."}
@@ -974,6 +1019,7 @@ strm_year_mk |>
   pivot_longer(-cmplx_strm) |> 
   separate(name, into = c("name","stat"), sep = "_mk:") |> 
   pivot_wider(names_from = stat, values_from = value) |> 
+  filter(pval < 0.1) |>
   filter(pval < 0.05) |>
   mutate(cmplx_strm = as.character(cmplx_strm)) |> 
   arrange(name) |> 
@@ -1062,6 +1108,17 @@ ggsave(filename = "fig_MK_site_year.png", width = 11, height = 9, dpi = 150, bg 
 
 # Conclusions
 
+```{r xlsx_export_for_KK}
+list(
+  strm_year = strm_year,
+  strm_year_mk = strm_year_mk,
+  site_meta = site_meta,
+  site_year = site_year,
+  site_year_mk = site_year_mk
+) |> 
+  writexl::write_xlsx("imw_hab_frontiers_mscpt_data_objects.xlsx")
+```
+
 Successful salmon recovery requires thinking upstream and down, next year and the year after and five years after that.
 
 # Cited
@@ -1116,6 +1173,202 @@ strm_year |>
 
 ggsave(filename = "fig_strm_year_all.png", width = 16, height = 12, dpi = 150, bg = "white")
 ```
+
+```{r fig_strm_year_all2, eval=FALSE}
+#portrait, reordered streams, fixed y-axis scales by measure
+
+strm_year |> 
+  mutate(
+    cmplx_strm = factor(cmplx_strm, levels =   c(
+      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
+      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
+      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
+    )
+    )
+  ) |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+  ) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  mutate(
+    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+  ) |> 
+  split(~name) |> 
+  map(
+    ~.x |> 
+  ggplot(aes(year, value, color = cmplx_strm)) +
+  geom_line(linetype = 2, show.legend = F) +
+  geom_point(size = 0.7, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~cmplx_strm + name, nrow = 10, scales = "fixed") +
+    labs(x = NULL, y = NULL)
+  ) |> 
+  wrap_plots(ncol = 6)
+
+  # ggplot(aes(year, value, color = cmplx_strm)) + 
+  # geom_line(linetype = 2, show.legend = F) + 
+  # geom_point(size = 0.7, show.legend = F) + 
+  # #geom_smooth(se = F, show.legend = F) + 
+  # scale_color_manual(values = pal_cmplx_strm) +
+  # #facet_wrap(~cmplx_strm + name, nrow = 10, scales = "fixed") +
+  # facet_grid(rows = vars(cmplx_strm), cols = vars(name), scales = "free_y") +
+  # labs(x = "", y = "", subtitle = "Time series of whole stream mean across sites per year")
+
+ggsave(filename = "fig_strm_year_all2.png", width = 12, height = 16, dpi = 150, bg = "white")
+```
+
+```{r fig_strm_year_all3, eval=FALSE}
+#portrait, reordered streams, fixed y-axis scales by measure
+#higher res, better facet labeling, theme_classic
+
+csl <- c(
+      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
+      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
+      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
+    )
+
+{
+  ggplot(tibble(cmplx_strm = factor(csl, levels = csl))) + 
+    geom_text(aes(1,1,label = cmplx_strm), size = 3) + 
+    facet_wrap(~cmplx_strm, nrow = 10, scales = "fixed") + 
+    theme_void() + theme(strip.text = element_blank())
+} + {
+strm_year |> 
+  mutate(
+    cmplx_strm = factor(cmplx_strm, levels = csl)
+  ) |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+  ) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  mutate(
+    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+  ) |> 
+  split(~name) |> 
+  map(
+    ~.x |> 
+  ggplot(aes(year, value, color = cmplx_strm)) +
+  geom_line(linetype = 2, show.legend = F) +
+  geom_point(size = 0.7, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~cmplx_strm, nrow = 10, scales = "fixed", axes = "all") +
+    theme_classic() +
+    theme(strip.text = element_blank()) +
+    labs(
+      subtitle = .x$name[1],
+      x = NULL, y = NULL
+      )
+  ) |> 
+  wrap_plots(ncol = 6)
+} + 
+  plot_layout(widths = c(0.1,0.9))
+
+
+ggsave(filename = "fig_strm_year_all3.png", width = 12, height = 16, dpi = 300, bg = "white")
+```
+
+```{r fig_strm_year_all4NOTRUN, eval=FALSE}
+#back to a version overlaying streams in complexes
+#portrait, reordered streams, fixed y-axis scales by measure
+#higher res, better facet labeling, theme_classic
+
+
+csl <- c(
+      'HC:\nLittle Anderson Creek\nBig Beef Creek\nSeabeck Creek\nStavis Creek*',
+      'LC:\nGermany Creek\nAbernathy Creek\nMill Creek*',
+      'ST:\nEast Twin River\nWest Twin River*\nDeep Creek'
+    )
+
+{
+  ggplot(tibble(cmplx_strm = factor(csl, levels = csl))) +
+    geom_text(aes(1,1,label = cmplx_strm), size = 3) +
+    facet_wrap(~cmplx_strm, nrow = 3, scales = "fixed") +
+    theme_void() + theme(strip.text = element_blank())
+}+{
+strm_year |> 
+  # mutate(
+  #   cmplx_strm = factor(cmplx_strm, levels = csl)
+  # ) |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+  ) |> 
+  rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  mutate(
+    cmplx = str_sub(cmplx_strm, 1,2),
+    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+  ) |> 
+  split(~name) |> 
+  map(
+    ~.x |> 
+  ggplot(aes(year, value, color = cmplx_strm)) +
+  geom_line(linetype = 1, linewidth = 0.2, show.legend = F) +
+  geom_point(size = 0.7, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~cmplx, nrow = 3, scales = "fixed", axes = "all") +
+    theme_classic() +
+    theme(strip.text = element_blank()) +
+    labs(
+      subtitle = .x$name[1],
+      x = NULL, y = NULL
+      )
+  ) |> 
+  wrap_plots(ncol = 6)
+} + 
+  plot_layout(widths = c(0.1,0.9))
+
+
+ggsave(filename = "fig_strm_year_all4.png", width = 12, height = 16, dpi = 300, bg = "white")
+```
+
+```{r fig_strm_year_all_IQR}
+
+strm_year |> 
+  mutate(cmplx_strm = factor(cmplx_strm, levels = csl)) |> 
+  select(
+    cmplx_strm, year, ends_with("5"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_q25, -lwd_all_q75,
+    -lwd_all_per100_q25, -lwd_all_per100_q75, 
+    -vlwd_q25, -vlwd_q75 
+  ) |>
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  separate(name, into = c("name","q"), sep = "_q") |> 
+  pivot_wider(names_from = q, values_from = value) |> 
+  mutate(
+    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D")),
+    iqr = `75`-`25`
+  ) |> 
+  select(cmplx_strm, year, name, iqr) |> 
+    split(~name) |> 
+  map(
+    ~.x |> 
+  ggplot(aes(year, iqr, color = cmplx_strm)) +
+  geom_line(linetype = 2, show.legend = F) +
+  geom_point(size = 0.7, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~cmplx_strm, nrow = 10, scales = "fixed", axes = "all") +
+    theme_classic() +
+    #theme(strip.text = element_blank()) +
+    labs(
+      subtitle = .x$name[1],
+      x = NULL, y = NULL
+      )
+  ) |> 
+  wrap_plots(ncol = 6)
+  
+ggsave(filename = "fig_strm_year_all_IQR.png", width = 12, height = 16, dpi = 150, bg = "white")
+
+```
+
 
 
 ```{r gg_site_range_horiz_cascade, eval=FALSE}
