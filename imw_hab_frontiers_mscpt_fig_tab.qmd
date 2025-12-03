@@ -1370,6 +1370,171 @@ ggsave(filename = "fig_strm_year_all_IQR.png", width = 12, height = 16, dpi = 15
 ```
 
 
+```{r}
+#did treatment streams diverge from reference streams?
+d_mean <- strm_year |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
+  ) |> 
+  #rename_with(~str_remove(., "_mean")) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  mutate(
+    cmplx = str_sub(cmplx_strm, 1,2)
+    #,name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+  )
+
+d_mean_trt_ref <- left_join(
+  filter(d_mean, str_detect(cmplx_strm, "\\*", negate = T))
+  ,
+  filter(d_mean, str_detect(cmplx_strm, "\\*"))
+  ,
+  by = c("cmplx", "year", "name"), suffix = c("_trt","_ref")
+  ) |> 
+  mutate(
+    dval = value_trt - value_ref
+  )
+
+d_mean_trt_ref |> 
+  ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
+  geom_col(position = position_dodge()) +
+  geom_smooth(method = "lm", se = F) +
+  geom_hline(yintercept = 0) +
+  #ggpmisc::stat_poly_line() +
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
+  labs(title = "Annual differences, treatment versus reference streams", subtitle = "Expect larger diffs with time (non-zero slopes) if actions detectable at whole-stream")
+
+d_mean_trt_ref |> 
+  nest(.by = c(cmplx_strm_trt, name)) |> 
+  mutate(
+    lm_fit = map(data, ~lm(dval ~ year, data = .x)),
+    lm_est_year = map(lm_fit, ~broom::tidy(.x) |> filter(term=="year"))
+  ) |> 
+  unnest_wider(lm_est_year) |> 
+  arrange(p.value)
+
+#playing with displaying differences on top of reference series 
+#maybe cool but arguably not really that helpful?
+d_mean_trt_ref |> 
+  ggplot(aes(year, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
+  geom_line(aes(y = value_ref, color = cmplx_strm_ref)) +
+  #geom_point(aes(y = value_trt)) +
+  geom_segment(aes(y = value_ref, yend = value_trt), position = position_dodge(width = 0.3)) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all")
+
+
+#couple of other presentations beside lm(dval ~ year): cumulative and average diff
+#these inform overall magnitude of departure (are differences small)
+#but do not capture change in time (are differences getting larger)
+d_mean_trt_ref |> 
+  #nest(.by = c(cmplx_strm_trt, name)) |> 
+  summarise(
+    across(dval, list(
+      sum = ~sum(.),
+      mean = ~mean(.),
+      abs_mean = ~mean(abs(.))
+    )),
+    .by = c(cmplx, cmplx_strm_trt, name)
+  )
+
+
+
+
+# #redo as var/IQR
+# #look similar to means but probably harder to think about?
+# #positive cols are larger IQR in treatment, neg slope less positive but greater than zero indicates smaller variation in treatment
+# #negative cols are smaller IQR in treatment such that pos slope less negative is increasing var in treatment (or shrinking in ref) etc.
+# d_iqr <- strm_year |> 
+#   select(
+#     cmplx_strm, year, ends_with("5"),
+#     -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
+#     -lwd_all_q25, -lwd_all_q75,
+#     -lwd_all_per100_q25, -lwd_all_per100_q75, 
+#     -vlwd_q25, -vlwd_q75 
+#   ) |>
+#   pivot_longer(-c(cmplx_strm, year)) |> 
+#   separate(name, into = c("name","q"), sep = "_q") |> 
+#   pivot_wider(names_from = q, values_from = value) |> 
+#   mutate(
+#     cmplx = str_sub(cmplx_strm, 1,2),
+#     iqr = `75`-`25`
+#     )
+# 
+# d_iqr_trt_ref <- left_join(
+#   filter(d_iqr, str_detect(cmplx_strm, "\\*", negate = T)) |> select(-`25`,-`75`)
+#   ,
+#   filter(d_iqr, str_detect(cmplx_strm, "\\*")) |> select(-`25`,-`75`)
+#   ,
+#   by = c("cmplx", "year", "name"), suffix = c("_trt","_ref")
+#   ) |> 
+#   mutate(
+#     dval = iqr_trt - iqr_ref
+#   )
+# 
+# d_iqr_trt_ref |> 
+#   ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
+#   geom_col(position = position_dodge()) +
+#   geom_smooth(method = "lm", se = F) +
+#   geom_hline(yintercept = 0) +
+#   #ggpmisc::stat_poly_line() +
+#   ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
+#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+#   facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
+#   labs(title = "Annual IQR anomalies versus reference streams")
+
+```
+
+
+```{r}
+#https://stats.stackexchange.com/questions/576499/how-to-compare-two-time-series-with-a-gam
+#instead of single fits per treatment stream against ref
+#model treatment streams as factors, pooled over complex
+
+d <- d_mean_trt_ref |> 
+  filter(cmplx == "LC", name == "vlwd_per100_mean") |> 
+  #filter(cmplx == "LC", name == "pct_gravel_mean") |> 
+  mutate(year = year - 2006)
+
+#ignoring individual treatment streams, not useful
+lm(dval ~ year, data = d) |> summary()
+#intercept differs by stream but same relationship to time
+lm(dval ~ year + cmplx_strm_trt, data = d) |> summary()
+#intercept and slope differ with time plus shared per-year effect
+lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = d) |> 
+  #summary()
+  broom::glance()
+#intercept and slope-against-time differ, no common time effect
+#with only 2 levels to stream these are effectively the same
+lm(dval ~ cmplx_strm_trt + year:cmplx_strm_trt, data = d) |> 
+    #summary()
+  broom::glance()
+#with fixed year effects, no "slope"
+lm(dval ~ factor(year) + cmplx_strm_trt, data = d) |> summary()
+
+#panel or repeat measures or longitudinal study regression?
+#https://www.econometrics-with-r.org/10.4-regression-with-time-fixed-effects.html
+# #if I had a worthwhile independent measure of "restored" could do something like
+# lm(dval ~ resto_amount + cmplx_strm_trt + year:cmplx_strm_trt, data = d)
+# # or use plm::plm, but I don't so I can't
+
+
+d_mean_trt_ref |> 
+  nest(.by = c(cmplx, name)) |> 
+  mutate(
+    lm_fit = map(data, ~lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = .x)),
+    lm_est_year = map(lm_fit, ~broom::tidy(.x))
+  ) |> 
+  unnest_longer(lm_est_year) |> 
+  select(-data, -lm_fit) |> print(n = Inf)
+
+
+```
+
+
 
 ```{r gg_site_range_horiz_cascade, eval=FALSE}
 d |>
