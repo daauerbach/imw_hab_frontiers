@@ -34,22 +34,6 @@ load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250307.RData"
 
 ```
 
-# Abstract
-
-# Introduction
-
-Widespread recognition of declining Pacific salmon populations has led to major, often publicly-funded, recovery efforts (Bilby et al. 2024). Protection and rehabilitation of the freshwater and estuarine systems where salmon spawn and rear is essential to these efforts, and, in 1999, the Washington State legislature created the Salmon Recovery Funding Board (SRFB) and a system of regional recovery organizations to distribute resources for projects meant to benefit fish habitat. The SRFB subsequently requested a study to assess the efficacy of stream habitat restoration and enhancement at the "watershed scale", based on the idea that sub-populations of each salmon species complete their freshwater life histories at the spatial extent of river networks rather than that of individual projects. Despite recognition that fish integrate complex hydrologic and geomorphic processes throughout riverscapes and the fact that many monitoring and management activities occur at this scale (Roni 2005), the logistical difficulty of experimental manipulation over entire catchments and the urgency of intervention has greatly limited the evaluation of restoration practice in this way.
-
-The Washington Intensively Monitored Watersheds (IMW) study is a collaborative, long-term, large-scale effort to meet the need for such evidence, with a study design that pairs measures of habitat conditions with salmon survival and productivity monitoring throughout multiple entire basins in several geographic "complexes" of replicate treatment and adjacent control streams (Bilby et al. 2005, Bennett et al. 2016). The inclusion of untreated sites and entire reference streams subject to comparable climate and management regimes enables strong inference regarding attribution and efficacy (Parker and Wiens 2005), and the results of this study were envisioned to directly inform the organizational processes and procedures through which various entities identify, design, propose, and implement recovery projects.
-
-This paper describes patterns of variation in the stream habitat measures collected annually since 2007 at `r nrow(site_meta)` sites distributed within 10 streams comprising 3 western Washington complexes. These observations constitue a substantial body of empirical evidence regarding the long-term dynamics of channel form in forested catchments of northwestern North America, and they contribute a unique and valuable perspective to discussions regarding the strengths and limitations of salmon recovery efforts to date (Bilby et al. 2024). Most robustly, this large dataset reinforces the critical need to plan for spatiotemporal variation in process-based river restoration. These findings also indicate the practical challenges of detecting returns on restoration investments at the whole-stream scale, and the IMW habitat monitoring data suggest how the sociopolitical processes that currently shape restoration resource allocation may unintentionally increase this detection problem. 
-
-
-# Methods
-
-## Study area
-
-Stream habitat data in the western Washington IMW study are collected at sites within three complexes of 10 small, adjacent watersheds (Figure 1, Table 1). The Strait of Juan de Fuca complex (ST) includes East Twin, West Twin (reference), and Deep creeks. The Hood Canal complex (HC) includes Little Anderson, Big Beef, Seabeck and Stavis (reference) creeks. The Lower Columbia complex (LC) includes Germany, Abernathy, and Mill (reference) creeks. These smaller watersheds were selected with the intent of increasing the proportion of stream networks that experienced restoration "treatment" within the study duration and to increase the sampling density for monitoring surveys.  
 
 ```{r figMAP_stream_sites_placeholder, fig.cap="Western Washington IMW stream habitat monitoring sites for Hood Canal (a,d), Lower Columbia (b,e), and Strait of Juan de Fuca (c,f) complexes. Stavis, Mill and West Twin creeks were designated as control watersheds in original study design."}
 
@@ -146,11 +130,6 @@ site_meta |>
 
 ```
 
-Intensive annual habitat surveys were based on Lazorchak et al. (1998), Crawford et al. (2002), and Roper et al. (2003). Survey protocols are similar to those used by the Washington Watershed Health Monitoring Program and the Oregon Coastal Coho Surveys (Anlauf et al. 2009). Habitat sampling locations (hereafter sites) were identified using a random, spatially balanced design stratified by stream order (Stevens and Olsen 2004). Surveys were conducted between June and October, beginning in 2004 and ongoing, with rotation among watersheds approximately weekly to minimize seasonal bias. Given the interest in detecting interannual trends, and following preliminary analyses of survey data collected in 2004 – 2006, the approach was modified to resurvey a consistent set of sites in each watershed. Only data from surveys conducted in 2007 and onward are presented. Some sites have been added following the random, spatially balanced design due to changes in accessibility.
-
-At each site, measurements and counts are made at and between 21 equally spaced cross-sectional transects, positioned equidistant and perpendicular to flow along a length of stream that is the longer of either 40 bankfull widths or 300m. Measurements at each transect included bankfull width (to the nearest 0.0 m), water depth (≥5 points to the nearest 0.00 m), and tallies of substrate size classes. Wood within the bankfull channel was counted by length and diameter classes between transects. Substrate was classified at approximately 5 points per transect as either smooth bedrock or rough bedrock (> 4 m), boulder (250 – 4000 mm), cobble (64 – 250 mm), coarse gravel (16 – 64 mm), fine gravel (2 – 16 mm), sand (0.06 – 2 mm), fines (< 2 mm), hardpan, wood, or other. When found, dry channels were sampled and all possible measurements were made (e.g., depth is not measured).
-
-## Data and analyses
 
 ```{r emap_pull, echo=FALSE, eval=FALSE}
 #declare 'con_emap' odbc::dbConnect
@@ -763,22 +742,7 @@ save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/i
 
 ```
 
-Observations were first summarized across transects per site per year. Average annual site pool depth was calculated as the arithmetic mean of the deepest (thalweg) depth measured at transects denoted as intersecting pools. The proportion of gravel was calculated by dividing the number of points classed as coarse or fine gravel by the total count of substrate points (e.g., per site-year, typically 21 transects with 5 points per transect). The density of very large wood was calculated as the counts of pieces >= 0.3m diameter and at least 5m in length, normalized by the total surveyed length between site transects and multiplied by 100. The proportion of pools was the number of transects intersecting a channel pool form, divided by the total number of transects per site per year, and the average width to depth ratio was the mean of per transect bankfull channel width divided by thalweg depth.
 
-Following extensive exploratory analysis, these site-year measures were then assessed for patterns of variation through time, among sites within streams and across streams and complexes. As indicators of 'whole-stream' habitat condition, the per year mean across sites within each stream was also calculated, and these stream-year averages were examined for patterns of change. Mann-Kendall (MK) non-parametric trend tests are a robust and well-established approach to detecting consistent directional change (monotonic increase or decrease) without assumptions of normality in the sample distribution. This simple method was chosen for presentation after results showed qualitative agreement with various other statistical approaches that require additional assumptions and parameter interpretation. The Sen's slope and statistical significance estimate offer insight into questions such as, "Did the proportion of gravel substrate throughout sampled sites in the stream network increase over the study duration?" To account for the temporal autocorrelation evident in many of the time series of yearly whole-stream averages, all trend calculations used the modified MK test in [`rtrend::mkTrend`](https://rpkgs.github.io/rtrend/) (Kong and Song 2024), which implements the approach of Hamed and Rao (1998).
-
-
-# Results & Discussion
-
-Across complexes, the range through time in habitat measures varied considerably among sites throughout each stream network (Figure SVN). 
-
-Indeed, ranges in the proportion of gravel substrate differed as much or more between sites within streams as between streams (Table SVN). All streams included sites with maximum ranges greater than 0.5, and 7 of 10 streams had much less variable sites with ranges < 0.2, including 0 or nearly 0 difference through time in Stavis, Big Beef, Mill and Abernathy creeks. The per-stream average ranges fell between 0.33 (Stavis) and 0.5 (Germany), with the Lower Columbia streams grouped relatively closely, and the Straits, Little Anderson and Seabeck Creeks also grouped around an average range of approximately 0.4. In other words, all streams included a preponderance of sites with modest change through time in the proportion of gravel substrate as well as several locations characterized by little to no change and several with very substantial variation.
-
-Similarly, site differed as much or more within streams as between streams in terms of the range through time in average pool depth. Ranges of 0 or nearly 0 were present in all streams, and the difference among streams in average range, from 0.2 in Little Anderson Creek to 0.5 in Abernathy Creek, was less than the difference between minimum and maximum ranges in all streams. That is, every stream included locations with pool depths that exhibited very little fluctuation as well as those that showed major change through time. In terms of the absolute magnitude of difference in measured depth, the degree of temporal variation was related as much to position within the stream network as it was to which stream network.
-
-Per-site large wood density showed somewhat greater separation among complexes and streams, although each stream included high and low variation sites. The maximum and average ranges in the Straits streams were larger than in Hood Canal or the Lower Columbia, although every stream other than Mill Creek contained sites with ranges as large or larger than the Straits average. 
-
-Despite the basin-scale differences in geologic and land use history, as well as the contemporary differences between streams in land cover and restoration effort, these long term monitoring data showed streams were consistent in having within-network spatial variation in the magnitude of temporal variation, a finding that clearly reinforces the concept of 'process domains' within riverscapes (e.g., Vannote et al. 1980, Montgomery 1989, Poole 2002). For the practice of process-based river restoration (Beechie et al. 2010), the common occurrence across systems of locations with different levels of change through time underscores the importance of attention to network position and localized dynamics in the diagnosis of limiting factors and the implementation of treatments intended to alleviate them.
 
 ```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
 d <- site_meta |> #glimpse()
@@ -952,8 +916,6 @@ Mann-Kendall (MK) tests for trends in whole-stream interannual change were signi
 
 Various individual sites did show statistically significant directional shifts through time in several measures (Figure MK-site-year). However, again with the exception of Abernathy Creek's large wood density change, these findings reinforced the conclusions at the scale of the whole-stream averages: relatively weak trends, little treatment-control separation, and little indication of desired habitat improvement.
 
-*[application to practice: restoration effects were only detectable when implemented at sufficient magnitude and duration and extent (i.e., lots of wood, over several years, in enough stream km above monitoring sites)]*
-
 
 ```{r tabMK_strm_year, tab.cap="Mann-Kendall trend test results for interannual change in habitat measures, corrected for temporal autocorrelation. "}
 #https://vsp.pnnl.gov/help/vsample/design_trend_mann_kendall.htm
@@ -1043,8 +1005,6 @@ strm_year_mk |>
 #ggsave(filename = "fig_MK_strm_year.png", width = 11, height = 9, dpi = 150, bg = "white")
 ```
 
-\n
-
 ```{r figMK_site_year, fig.cap="Individual site very large wood density through time. Colored series indicate sites with significant (p < 0.05) Mann-Kendall trends, overlaid on the remaining sites (light gray)."}
 site_year_mk <- site_year |> #glimpse()
   select(
@@ -1100,13 +1060,6 @@ ggsave(filename = "fig_MK_site_year.png", width = 11, height = 9, dpi = 150, bg 
 ```
 
 
-**Possible further points (delete/modify as desired)**
-
-  - unanticipated limitations of the original treatment-control study design: not enough concentrated 'treatment' interventions because of limited alignment with lead entity priorities and inadequately weighted competition with non-IMW projects
-
-  - We do not see differentiation relative to 'treatment-control' across streams within complex, but there is evidence of non-linear longer-phase cycles that could be viewed as multi-year 'trends' (GAM regressions on smoothed year). This has bearing on restoration practice, both for planning (e.g., shifts in perceived limiting factors due to large scale hydroclimate fluctuation) and effectiveness monitoring (e.g., risk of both/either false assertion/attribution of trend and/or incorrect assumption that work is not working).
-
-# Conclusions
 
 ```{r xlsx_export_for_KK}
 list(
@@ -1119,39 +1072,6 @@ list(
   writexl::write_xlsx("imw_hab_frontiers_mscpt_data_objects.xlsx")
 ```
 
-Successful salmon recovery requires thinking upstream and down, next year and the year after and five years after that.
-
-# Cited
-
-Anlauf, K.J., Jones, K.K., and Stein, C.H. 2009. The status and trend of physical habitat and rearing potential in coho bearing streams in the Oregon coastal coho evolutionary significant unit. Oregon Department of Fish and Wildlife, Salem, Ore.
-
-Beechie, T.J., Sear, D.A., Olden, J.D., Pess, G.R., Buffington, J.M., Moir, H., Roni, P. and Pollock, M.M., 2010. Process-based principles for restoring river ecosystems. BioScience, 60(3), pp.209-222.
-
-Bilby, R.E., Currens, K.P., Fresh, K.L., Booth, D.B., Fuerstenberg, R.R. and Lucchetti, G.L., 2024. Why Aren't Salmon Responding to Habitat Restoration in the Pacific Northwest?. Fisheries, 49(1), pp.16-27.
-
-Crawford, B.A., Drivdahl, C., Leider, S., Richmond, C. and Butkus, S., 2002. The Washington Comprehensive Monitoring Strategy for Watershed Health and Salmon Recovery.
-
-Hamed, K. H., & Rao, A. R., 1998. A modified Mann-Kendall trend test for autocorrelated data. Journal of hydrology, 204(1-4), 182-196. <doi:10.1016/S0022-1694(97)00125-X>.
-
-Kong D, Song H, 2024. _rtrend: Trend Estimating Tools_. R package version 0.1.5, <https://CRAN.R-project.org/package=rtrend>.
-
-Lazorchak, J., D. Klemm, and D. Peck, Editors. (1998). Environmental Monitoring and Assessment Program-Surface Waters: Field Operations and Methods for Measuring the Ecological Condition of Wadeable Streams.
-
-Montgomery, D.R., 1999. Process domains and the river continuum 1. JAWRA Journal of the American Water Resources Association, 35(2), pp.397-410.
-
-Parker, K.R. and Wiens, J.A., 2005. Assessing recovery following environmental accidents: environmental variation, ecological assumptions, and strategies. Ecological Applications, 15(6), pp.2037-2051.
-
-Poole, G.C., 2002. Fluvial landscape ecology: addressing uniqueness within the river discontinuum. Freshwater biology, 47(4), pp.641-660.
-
-Roni, P., editor. 2005. Monitoring stream and watershed restoration.  American Fisheries Society, Bethesda, Maryland.
-
-Roper, B.B., J.L. Kershner, and R.C. Henderson. 2003. The value of using permanent sites when evaluating stream attributes at the reach scale.  Journal of Freshwater Ecology  18(4): 585 – 592.
-
-Stevens, D.L., Jr., and A.R. Olsen.  2004.  Spatially balanced sampling of natural resources.  Journal of the American Statistical Association 99: 262-278.
-
-Vannote, R. L., Minshall, G. W., Cummins, K. W., Sedell, J. R., and Cushing, C. E., 1980. The river continuum concept. Canadian Journal of Fisheries and Aquatic Sciences, 37(1), 130-137
-
-# Supplementary
 
 ```{r fig_strm_year_all, eval=FALSE}
 strm_year |> 
