@@ -30,7 +30,8 @@ theme_set(theme_minimal())
 # dir_data_common <- "~/T/DFW-Team WDFW Watershed Synthesis - data_common"
 # epsg <- 2927 #WA state standard; NAD83(HARN)/ft
 
-load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250307.RData")
+#load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250307.RData")
+load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_251203.RData") #pool_weth_depth and pool_bnk_depth; no new EMAP query
 
 ```
 
@@ -130,6 +131,7 @@ site_meta |>
 
 ```
 
+# data
 
 ```{r emap_pull, echo=FALSE, eval=FALSE}
 #declare 'con_emap' odbc::dbConnect
@@ -394,9 +396,12 @@ hab$transects_site_year <- hab$transects |>
     hab$transects |> 
       filter(pool_non_pool_desc == "Pool") |> 
       summarise(
-        pool_depth_mean = mean(thl_dpth, na.rm = T),
+        pool_wet_depth_mean = mean(thl_dpth, na.rm = T),
+        pool_bnk_depth_mean = mean(bnk_hght, na.rm = T),
         .by = c("strm", "site", "year", "reach_survey_id")
       ) 
+    # |> filter(pool_wet_depth_mean > pool_bnk_depth_mean) 
+    #9 of 4005 site-years, semi-joined shows really 10 individual transects but not possible to determine what/if error
     ,
     by = c("strm", "site", "year", "reach_survey_id")
   ) |> 
@@ -617,7 +622,9 @@ hab$site_meta <- hab$site_meta |>
             wetted_W_D = wet_w_thl_d_mean,
             pct_gravel, 
             pct_pools, 
-            pool_depth = pool_depth_mean
+            #pool_depth = pool_depth_mean
+            pool_wet_depth = pool_wet_depth_mean,
+            pool_bnk_depth = pool_bnk_depth_mean
             ),
           list(
             mean = ~mean(., na.rm = T),
@@ -672,7 +679,9 @@ hab$site_year <- left_join(
     wetted_W_D = wet_w_thl_d_mean,
     pct_gravel, 
     pct_pools, 
-    pool_depth = pool_depth_mean,
+    #pool_depth = pool_depth_mean,
+    pool_wet_depth = pool_wet_depth_mean,
+    pool_bnk_depth = pool_bnk_depth_mean,
     up_down_lgth, lgth_wdth,
     lwd_all, lwd_all_per100, lwd_all_per_m2,
     vlwd = lwd_no10, 
@@ -718,7 +727,7 @@ strm_year <- site_year |>  #as_tibble(sf_site_year) |>
         bankfull_W_D,
         pct_gravel, 
         pct_pools, 
-        pool_depth,
+        pool_wet_depth, pool_bnk_depth, #pool_depth,
         up_down_lgth,
         lwd_all, lwd_all_per100, lwd_all_per_m2,
         vlwd, vlwd_per100, vlwd_per_m2,
@@ -742,7 +751,225 @@ save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/i
 
 ```
 
+# uncertainty in measures
 
+## examine bankfull pool depth vs wetted pool depth
+
+```{r wet_vs_bnk_pool_depth}
+
+#whole-stream pool bankfull depth is roughly about as variable among years as pool wetted depth (first two plots)
+#the coefficients of variation through time for individual sites show that the average bankfull pool depth was lower than the average wetted pool depth in all streams but W Twin, but that the distribution of CV were not meaningfully different outside of Seabeck (where wetted was much more variable, as expected) and maaaaaybe Mill or Germany (third plot of boxes)
+#subtracting the per-site bankfull depth CV from the wetted depth CV shows most sites had more variation through time in wetted (last plot, right of 0 line) but the differences were small especially outside of Seabeck, Anderson and ABR016 and STA015
+
+strm_year |> 
+  select(cmplx_strm, year, pool_wet_depth_mean, pool_bnk_depth_mean) |> 
+  pivot_longer(-c(cmplx_strm, year)) |> 
+  
+  # ggplot(aes(year, value, color = cmplx_strm)) +
+  # scale_color_manual(values = pal_cmplx_strm) +
+  # geom_line(aes(linetype = name)) + geom_point(aes(shape = name)) +
+  # facet_grid(rows = vars(cmplx_strm))
+
+  ggplot(aes(year, value, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  geom_line(aes(linetype = name)) + geom_point(aes(shape = name)) +
+  facet_grid(cols = vars(name))
+
+site_meta |> 
+  select(cmplx_strm, site, 
+         pool_wet_depth_mean, pool_wet_depth_sd, 
+         pool_bnk_depth_mean, pool_bnk_depth_sd) |> 
+  mutate(
+    pool_wet_depth_cv = pool_wet_depth_sd / pool_wet_depth_mean,
+    pool_bnk_depth_cv = pool_bnk_depth_sd / pool_bnk_depth_mean
+  ) |> 
+  select(cmplx_strm, site, ends_with("cv")) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  ggplot(aes(value, name, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  geom_boxplot(aes(fill = name), outliers = F) +
+  geom_jitter(aes(shape = name),  height = 0.2) +
+  facet_grid(rows = vars(cmplx_strm))
+
+
+site_meta |> 
+  # select(cmplx_strm, site, pool_wet_depth_sd, pool_bnk_depth_sd) |> 
+    select(cmplx_strm, site, 
+         pool_wet_depth_mean, pool_wet_depth_sd, 
+         pool_bnk_depth_mean, pool_bnk_depth_sd) |> 
+  mutate(
+    pool_wet_depth_cv = pool_wet_depth_sd / pool_wet_depth_mean,
+    pool_bnk_depth_cv = pool_bnk_depth_sd / pool_bnk_depth_mean,
+    d_wet_bnk_cv = pool_wet_depth_cv - pool_bnk_depth_cv
+  ) |> 
+  drop_na(d_wet_bnk_cv) |> 
+  ggplot(aes(d_wet_bnk_cv, fct_reorder(site, d_wet_bnk_cv, min, .desc = T), color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  geom_point() +
+  geom_text(aes(label = site), hjust = -0.2, size = 2) +
+  geom_vline(xintercept = 0)
+
+```
+
+## focal site series, low vs high variation
+
+pending focal sites from WD and KK
+
+```{r site_low_high_variation}
+
+bind_rows( 
+  semi_join(site_year, site_meta |> slice_max(pct_gravel_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "max-sd")
+  ,
+  semi_join(site_year, site_meta |> slice_min(pct_gravel_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "min-sd")  
+  ) |> 
+  mutate(sdtype = factor(sdtype, levels = c("min-sd","max-sd"))) |> 
+  ggplot(aes(year, pct_gravel, group = site, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  #geom_col() +
+  geom_line(linewidth = 0.3, show.legend = F) + geom_point(size = 0.5, show.legend = F) +
+  facet_grid(rows = vars(cmplx_strm), cols = vars(sdtype), ) +
+  labs(
+    title = "Sites per stream with smallest (min-sd) and largest (max-sd) interannual variation in proportion gravel measures"
+  ) +
+  theme_light()
+
+bind_rows( 
+  semi_join(site_year, site_meta |> slice_max(pool_bnk_depth_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "max-sd")
+  ,
+  semi_join(site_year, site_meta |> slice_min(pool_bnk_depth_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "min-sd")  
+  ) |> 
+  mutate(sdtype = factor(sdtype, levels = c("min-sd","max-sd"))) |> 
+  ggplot(aes(year, pool_bnk_depth, group = site, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  #geom_col() +
+  geom_line(linewidth = 0.3, show.legend = F) + geom_point(size = 0.5, show.legend = F) +
+  facet_grid(rows = vars(cmplx_strm), cols = vars(sdtype), scales = "free") +
+  labs(
+    title = "Sites per stream with smallest (min-sd) and largest (max-sd) interannual variation in pool form depth relative to bankfull"
+  ) +
+  theme_light()
+
+bind_rows( 
+  semi_join(site_year, site_meta |> slice_max(vlwd_per100_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "max-sd")
+  ,
+  semi_join(site_year, site_meta |> slice_min(vlwd_per100_sd, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(sdtype = "min-sd")  
+  ) |> 
+  mutate(sdtype = factor(sdtype, levels = c("min-sd","max-sd"))) |> 
+  ggplot(aes(year, vlwd_per100, group = site, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  #geom_col() +
+  geom_line(linewidth = 0.3, show.legend = F) + geom_point(size = 0.5, show.legend = F) +
+  facet_grid(rows = vars(cmplx_strm), cols = vars(sdtype), scales = "free") +
+  labs(
+    title = "Sites per stream with smallest (min-sd) and largest (max-sd) interannual variation in very large wood count per 100m"
+  ) +
+  theme_light()
+
+#as range and with site label
+d <- bind_rows( 
+  semi_join(site_year, site_meta |> slice_max(vlwd_per100_max - vlwd_per100_min, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(type = "max-rng")
+  ,
+  semi_join(site_year, site_meta |> slice_min(vlwd_per100_max - vlwd_per100_min, n = 4, by = cmplx_strm), by = "site") |> 
+    mutate(type = "min-rng")  
+  ) |> 
+  mutate(type = factor(type, levels = c("min-rng","max-rng")))
+
+d |> 
+  ggplot(aes(year, vlwd_per100, group = site, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  geom_line(linewidth = 0.3, show.legend = F) + geom_point(size = 0.5, show.legend = F) +
+  #annotate("text")
+  geom_text(
+    data = distinct(d, cmplx_strm, site, type, .keep_all = T) |> 
+      mutate(ypos = rank(vlwd_per100, ties.method = "first")*6, .by = c(cmplx_strm, type))
+    ,
+    aes(label = site, y = ypos), x = 2024,
+    show.legend = F) +
+  facet_grid(rows = vars(cmplx_strm), cols = vars(type), scales = "free") +
+  labs(
+    title = "Sites per stream with smallest and largest ranges of interannual variation in very large wood count per 100m"
+  ) +
+  theme_light()
+
+```
+
+## repeat sites
+
+# was resto detectable treatment vs reference: whole-stream treat-ref diff series
+
+```{r strm_year_meas_mean_diff_mean_trt_ref}
+strm_year_meas_mean <- strm_year |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("pool_wet"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"), -contains("lwd_all"),
+    -vlwd_mean
+  ) |> 
+  pivot_longer(cols = -c(cmplx_strm, year)) |> 
+  mutate(cmplx = str_sub(cmplx_strm, 1,2))
+
+diff_mean_trt_ref <- left_join(
+  filter(strm_year_meas_mean, str_detect(cmplx_strm, "\\*", negate = T))
+  ,
+  filter(strm_year_meas_mean, str_detect(cmplx_strm, "\\*"))
+  ,
+  by = c("cmplx", "year", "name"), suffix = c("_trt","_ref")
+  ) |> 
+  mutate(dval = value_trt - value_ref)
+
+```
+
+```{r fig_ref_series_trt_vert_segments}
+diff_mean_trt_ref |> 
+  ggplot(aes(year, fill = cmplx_strm_trt)) +
+  geom_line(aes(y = value_ref, color = cmplx_strm_ref)) +
+  geom_segment(aes(y = value_ref, yend = value_trt, color = cmplx_strm_trt),
+               position = position_dodge(width = 0.4),
+               linewidth = 1.1) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_grid(cols = vars(cmplx), rows = vars(name), 
+             scales = "free", switch = "y", axes = "all") +
+  theme_classic() +
+  labs(
+    x = NULL, y = NULL,
+    title = "Whole-stream yearly mean values for reference (solid, dark lines) and treatment deviation (vertical segments)",
+    subtitle = "Primarily illustrating that reference whole-stream summarized measures varied in time"
+  )
+
+```
+
+
+```{r}
+d_mean_trt_ref |> 
+  ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
+  geom_col(position = position_dodge()) +
+  geom_smooth(method = "lm", se = F) +
+  geom_hline(yintercept = 0) +
+  #ggpmisc::stat_poly_line() +
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
+  labs(title = "Annual differences, treatment versus reference streams", subtitle = "Expect larger diffs with time (non-zero slopes) if actions detectable at whole-stream")
+```
+
+
+# did whole-stream measure exhibit trend: series MK
+
+# [and/but] was resto detectable at reach-scale: focal sites series
+
+# across-site range distrib
+
+
+
+
+# previous
 
 ```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
 d <- site_meta |> #glimpse()
@@ -1327,15 +1554,6 @@ d_mean_trt_ref |>
   facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
   labs(title = "Annual differences, treatment versus reference streams", subtitle = "Expect larger diffs with time (non-zero slopes) if actions detectable at whole-stream")
 
-d_mean_trt_ref |> 
-  nest(.by = c(cmplx_strm_trt, name)) |> 
-  mutate(
-    lm_fit = map(data, ~lm(dval ~ year, data = .x)),
-    lm_est_year = map(lm_fit, ~broom::tidy(.x) |> filter(term=="year"))
-  ) |> 
-  unnest_wider(lm_est_year) |> 
-  arrange(p.value)
-
 #playing with displaying differences on top of reference series 
 #maybe cool but arguably not really that helpful?
 d_mean_trt_ref |> 
@@ -1345,6 +1563,28 @@ d_mean_trt_ref |>
   geom_segment(aes(y = value_ref, yend = value_trt), position = position_dodge(width = 0.3)) +
   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
   facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all")
+
+
+#every measure, each stream fit individually s.t. year is per-stream slope
+d_mean_trt_ref |> 
+  nest(.by = c(cmplx_strm_trt, name)) |> 
+  mutate(
+    lm_fit = map(data, ~lm(dval ~ year, data = .x)),
+    lm_est_year = map(lm_fit, ~broom::tidy(.x) |> filter(term=="year"))
+  ) |> 
+  unnest_wider(lm_est_year) |> 
+  arrange(p.value)
+
+#every measure, streams as factor for different intercepts plus shared year effect AND stream-specific slope
+d_mean_trt_ref |> 
+  nest(.by = c(cmplx, name)) |> 
+  mutate(
+    lm_fit = map(data, ~lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = .x)),
+    lm_est_year = map(lm_fit, ~broom::tidy(.x))
+  ) |> 
+  unnest_longer(lm_est_year) |> 
+  select(-data, -lm_fit) |> print(n = Inf)
+
 
 
 #couple of other presentations beside lm(dval ~ year): cumulative and average diff
@@ -1360,9 +1600,6 @@ d_mean_trt_ref |>
     )),
     .by = c(cmplx, cmplx_strm_trt, name)
   )
-
-
-
 
 # #redo as var/IQR
 # #look similar to means but probably harder to think about?
@@ -1440,16 +1677,6 @@ lm(dval ~ factor(year) + cmplx_strm_trt, data = d) |> summary()
 # #if I had a worthwhile independent measure of "restored" could do something like
 # lm(dval ~ resto_amount + cmplx_strm_trt + year:cmplx_strm_trt, data = d)
 # # or use plm::plm, but I don't so I can't
-
-
-d_mean_trt_ref |> 
-  nest(.by = c(cmplx, name)) |> 
-  mutate(
-    lm_fit = map(data, ~lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = .x)),
-    lm_est_year = map(lm_fit, ~broom::tidy(.x))
-  ) |> 
-  unnest_longer(lm_est_year) |> 
-  select(-data, -lm_fit) |> print(n = Inf)
 
 
 ```
