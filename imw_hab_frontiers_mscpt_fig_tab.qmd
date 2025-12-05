@@ -753,7 +753,7 @@ save.image(file = paste0("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/i
 
 # uncertainty in measures
 
-## examine bankfull pool depth vs wetted pool depth
+## bankfull pool depth vs wetted pool depth
 
 ```{r wet_vs_bnk_pool_depth}
 
@@ -902,6 +902,434 @@ d |>
 
 ## repeat sites
 
+```{r imwvar_pull}
+#declare con_imwwar
+
+imwvar <- list()
+
+imwvar$reaches_sampled <- tbl(
+  con_imwvar,
+  dbplyr::in_schema("dbo", "ZCORE_Reaches_All_V")
+  ) |>
+  filter(
+    Sampl_Or_Not_Ind == 1,
+    Srvy_Yr > 2006
+    ) |>
+  select(
+    cmplx_abrv = COMPLEX_NAME_Abrvd,
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Site_Id,
+    Reach_Survey_Id,
+    x_lat = Xsite_Lat_Coord,
+    x_lon = Xsite_Lngtd_Coord,
+    smpl_mthd_desc = SAMPL_METHOD_Desc,
+    rch_lgth_meas_desc = REACH_LNGTH_MEAS_LOC_Desc,
+    Xsite_Distnc_Up_Meas, Xsite_Distnc_Down_Meas
+    #STREAM_NAME_LLID_100_Code, Total_Reach_Lgth, Move_Reach_Ind
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  mutate(
+    across(
+      c(xsite_distnc_up_meas, xsite_distnc_down_meas),
+      ~if_else(. < 0, NA_integer_, .)
+    ),
+    up_down_lgth = xsite_distnc_up_meas + xsite_distnc_down_meas
+  )
+
+
+#bankfull, wetted width, thalweg depth, size channels, bars, etc.
+#usually ~21 transects per site per year; replacing -9999 with NAs
+imwvar$transects <- tbl(
+  con_imwvar,
+  dbplyr::in_schema("dbo", "ZCORE_Transects_V")
+  ) |>
+  filter(
+    Srvy_Yr > 2006
+  ) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    x_lat = Xsite_Lat_Coord,
+    x_lon = Xsite_Lngtd_Coord,
+    Transect_Id, Transect_Letter,
+    Transect_Extra_Side_Channel_Ind,
+    Transect_Fish_Present_Ind,
+    Transect_Wet_Wdth_Meas,
+    Transect_Bar_Wdth_Present_Ind, Transect_Bar_Wdth_Meas,
+    Transect_Bankfull_Wdth_Meas, Transect_Bankfull_Hgt_Meas,
+    Transect_Thalweg_Dpth_Meas,
+    CHANNEL_UNIT_CODE_Abrvd, CHANNEL_UNIT_CODE_Desc, #,Transect_Channel_Unit_Code,
+    POOL_FORM_CODE_Desc, #,Transect_Pool_Form_Code,
+    Transect_Backwater_Present_Ind
+    #,Pool_Non_Pool_Desc #,Pool_Non_Pool_Code,
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  drop_na(transect_id) |>
+  mutate(
+    across(
+      c(ends_with("_meas")),
+      ~if_else(. < 0, NA_real_, .)
+    )
+  )
+
+#usually 5 substrate measures per transect, ~21 transects per site per year
+#limited to 2007 forward, replacing -9999 with NAs
+imwvar$substrate <- tbl(
+  con_imwvar,
+  dbplyr::in_schema("dbo", "ZCORE_Transects_Substrate_V")
+  ) |>
+  filter(Srvy_Yr > 2006) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    Transect_Id, Transect_Letter,
+    CHANNEL_UNIT_CODE_Abrvd, #,Transect_Channel_Unit_Code,
+    Transect_Substrate_Id,
+    TRANSECT_SUBSTRATE_SAMPL_PT_Abrvd, #,TRANSECT_SUBSTRATE_SAMPL_PT_Code,
+    Transect_Substrate_Sampl_Dpth_Meas,
+    TRANSECT_SUBSTRATE_SIZE_CLAS_Abrvd, TRANSECT_SUBSTRATE_SIZE_CLAS_Desc #,TRANSECT_SUBSTRATE_SIZE_CLAS_Code
+  ) |>
+  collect() |>
+  rename_with(tolower) |>
+  mutate(
+    across(
+      c(ends_with("_meas")),
+      ~if_else(. < 0, NA_real_, .)
+    )
+  )
+
+#measured for 'segments' between (x-section) transects
+#counts for multiple length and diameter classes, in-channel and 'bridging'
+#no coercion to NA (yet)
+imwvar$lwd <- tbl(
+  con_imwvar,
+  dbplyr::in_schema("dbo", "ZCORE_ReachSegments_LWD_V")
+  ) |> #colnames()
+  filter(Srvy_Yr > 2006) |>
+  select(
+    cmplx_desc = COMPLEX_NAME_Desc,
+    strm = STREAM_NAME,
+    site = Site_Name,
+    year = Srvy_Yr,
+    Reach_Survey_Id,
+    everything()
+  ) |>
+  collect() |>
+  drop_na(LWD_CLAS_Code) |>
+  rename_with(~str_remove(.,"LWD_CLAS_"), contains("LWD_CLAS_")) |>
+  rename_with(tolower)
+
+glimpse(imwvar)
+
+DBI::dbDisconnect(con_imwvar)
+rm(uid, pwd, con_imwvar)
+saveRDS(imwvar, "../imwvar_pull.rds")
+
+```
+
+```{r var_hab_objects}
+#only want 2022, 15HC+15L sites
+imwvar_sites <- filter(imwvar$reaches_sampled, year > 2012) |> select(site, year)  
+imwvar <- map(imwvar, ~semi_join(.x, imwvar_sites, by = c("site", "year")))
+
+#these are only the "secondary" or "repeat" obs, not both passes
+imwvar$transects |> filter(site == "ABR009") |> arrange(transect_letter) |> print(n=Inf)
+
+hab$transects |> filter(site == "ABR009", year == 2022) |> arrange(transect_letter) |> print(n=Inf) #24
+hab$transects_site_year |> filter(site == "ABR009", year == 2022) #with sd/min/max across transects
+hab$site_year |> filter(site == "ABR009", year == 2022) #site-year mean only but with LWD
+site_year |> filter(site == "ABR009", year == 2022) #same as hab$site_year
+
+#distinct() in hab$transects not needed (checked)
+#also pool_non_pool is missing from original dbo_ZCORE_Transects_V
+#so generating equivalent, but note that all 'unknown, fluvial' have PL channel unit codes
+imwvar$transects <- imwvar$transects |>
+  mutate(
+    tsct_lett = str_remove_all(transect_letter, "X|Y|Z"),
+    #this codes all 'unknown, fluvial' as pool==T
+    pool = str_detect(pool_form_code_desc, "Not", negate = T),
+    #so revert any that are not "PL" etc to pool==F
+    #but turns out that all unknown are PL...
+    pool = if_else(
+      pool_form_code_desc == "Unknown, fluvial" & 
+        str_sub(channel_unit_code_abrvd,1,1) != "P",
+      F, pool)
+  ) |> 
+  #count(pool, pool_form_code_desc, channel_unit_code_abrvd)
+  select(
+    #cmplx_strm, cmplx_desc, strm, 
+    site, year, reach_survey_id, x_lon, x_lat, transect_id,
+    tsct_lett, transect_letter,
+    side_chan = transect_extra_side_channel_ind,
+    fish_prst = transect_fish_present_ind,
+    bnk_wdth = transect_bankfull_wdth_meas,
+    bnk_hght = transect_bankfull_hgt_meas,
+    wet_wdth = transect_wet_wdth_meas,
+    thl_dpth = transect_thalweg_dpth_meas,
+    # #pool_non_pool_desc, ## not in these data
+    # pool_form_code_desc, ## not binary
+    pool,
+    channel_unit_code_abrvd, channel_unit_code_desc
+    )
+  
+#could do transect-level comparison
+#but shows that not all transects were re-positioned identically
+#so maybe less useful than understanding site-year uncertainty, 
+#which includes both that positional uncertainty and the repeat obs (of same location) uncertainty
+var_hab_tsct <- imwvar$transects |> 
+  left_join(
+    hab$transects |> mutate(pool = if_else(pool_non_pool_desc=="Pool", T, F))
+    ,
+    suffix = c("_var","_hab"),
+    by = c("site", "year","tsct_lett","transect_letter")
+  ) |>
+  #dropping: -starts_with("reach_survey_id"), -starts_with("transect_id"), -starts_with("x_"), -cmplx_desc, -strm
+  select(
+    cmplx_strm, site, year, tsct_lett, transect_letter,
+    starts_with("chann"), 
+    pool_var, pool_hab, #pool_non_pool_desc
+    starts_with("bnk_wdth"), starts_with("bnk_hght"),
+    starts_with("wet_wdth"), starts_with("thl_dpth")
+    )
+
+#some of these non-matching codes may be "subtypes' of the same type (e.g., 2 kinds of pools)
+var_hab_tsct |> count(channel_unit_code_abrvd_var == channel_unit_code_abrvd_hab) |> arrange(desc(n))
+#pool/not is better but still ~23% not matching
+var_hab_tsct |> count(pool_var == pool_hab) |> arrange(desc(n)) |> mutate(pct = n / sum(n))
+
+
+#create object to pair with hab$transects_site_year
+imwvar$transects_site_year <- imwvar$transects |> 
+  summarise(
+    n_tsct = n(), #same as: length(transect_letter)
+    n_supp = sum(str_detect(transect_letter, "X|Y|Z")),
+    pct_supp = n_supp / n_tsct,
+    n_pools = sum(pool),
+    pct_pools = n_pools / n_tsct,
+    .by = c("site", "year", "reach_survey_id")
+  ) |> 
+  full_join(
+    imwvar$transects |> 
+      filter(pool) |> 
+      summarise(
+        pool_wet_depth_mean = mean(thl_dpth, na.rm = T),
+        pool_bnk_depth_mean = mean(bnk_hght, na.rm = T),
+        .by = c("site", "year", "reach_survey_id")
+      ),
+    by = c("site", "year", "reach_survey_id")
+  ) |> 
+  full_join(
+    imwvar$substrate |> 
+      count(site, year, reach_survey_id,
+            transect_substrate_size_clas_abrvd, 
+            transect_substrate_size_clas_desc) |> 
+      group_by(site, year, reach_survey_id) |>
+      mutate(n_pct = n / sum(n)) |> 
+      filter(transect_substrate_size_clas_abrvd %in% c("GC", "GF")) |> 
+      summarise(pct_gravel = sum(n_pct), .groups = "drop"), 
+    by = c("site", "year", "reach_survey_id")
+  ) |> 
+  #now add width; bringing back 'wetted'
+  full_join(
+    imwvar$transects |> 
+      #first sum per cross-sectional transect position, doing nothing for many non-split instances
+      summarise(
+        across(c(bnk_wdth, bnk_hght, wet_wdth), sum), 
+        .by = c("site", "year", "reach_survey_id", "tsct_lett")
+      ) |> 
+      #then aggregate to site-year distributional measures across transects
+      summarise(
+        across(
+          c(bnk_wdth, bnk_hght, wet_wdth),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            max = ~max(., na.rm = T)
+          )),
+        .by = c("site", "year", "reach_survey_id")
+      ), 
+    by = c("site", "year", "reach_survey_id")
+  ) |>  
+  #now add width:depth
+  #shift to wetted-thalweg, bank-bank following call with KK/WD/KS
+  #summarization throws warnings whenever grouped vector is empty
+  full_join(
+    imwvar$transects |> 
+      #calc W:D at every transect, including lateral 'supplementary'
+      #plenty of Inf and NA
+      mutate(
+        wet_w_thl_d = wet_wdth / thl_dpth,
+        bnk_w_bnk_d = bnk_wdth / bnk_hght
+      ) |> 
+      #then aggregate to site-year distributional measures across transects
+      summarise(
+        across(
+          c(wet_w_thl_d, bnk_w_bnk_d),
+          list(
+            mean = ~mean(., na.rm = T),
+            sd = ~sd(., na.rm = T),
+            min = ~min(., na.rm = T),
+            max = ~max(., na.rm = T)
+          )),
+        .by = c("site", "year", "reach_survey_id")
+      ) 
+    ,
+    by = c("site", "year", "reach_survey_id")
+  ) 
+  
+var_hab_site_year <- left_join(
+  imwvar$transects_site_year |> select(-reach_survey_id)
+  ,
+  hab$transects_site_year |> select(-strm, -reach_survey_id)
+  ,
+  suffix = c("_var","_hab"),
+  by = c("site", "year")
+) |> select(
+    cmplx_strm, site, year, 
+    starts_with("n_pools"), starts_with("pct_pools"),
+    starts_with("pool_wet_depth"), starts_with("pool_bnk_depth"),
+    starts_with("pct_gravel"),
+    starts_with("bnk_wdth"), starts_with("bnk_hght"),
+    starts_with("wet_wdth"), starts_with("thl_dpth"),
+    starts_with("bnk_w_bnk_d") #skipping wet_w_d
+    )
+
+```
+
+```{r}
+#immediate first impression is that site is biggest determinant of differences: 
+#some sites are similar or different across multiple measures, likely transect-position related?
+var_hab_site_year |> 
+  select(cmplx_strm, site, pct_pools_var:pct_gravel_hab) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  mutate(
+    var_hab = str_sub(name, -3,-1),
+    meas = str_sub(name, 1,-5),
+    name = NULL
+    ) |> 
+  ggplot() +
+  geom_col(aes(value, site, fill = var_hab), position = position_dodge()) +
+  scale_fill_manual(values = c("purple","orange")) +
+  facet_wrap(~meas, scales = "free")
+
+#only the measures with single values, not yet examining min-max-mean
+var_hab_site_year_diff <- var_hab_site_year |> 
+  select(cmplx_strm, site, pct_pools_var:pct_gravel_hab) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  mutate(
+    var_hab = str_sub(name, -3,-1),
+    meas = str_sub(name, 1,-5),
+    name = NULL
+    ) |> 
+  pivot_wider(names_from = var_hab, values_from = value) |> 
+  mutate(
+    d_var_hab = var - hab,
+    d_var_hab_pct_hab = d_var_hab / hab
+  )
+  
+var_hab_site_year_diff |> 
+  split(~meas) |> 
+  map(
+    ~.x |> 
+      ggplot() +
+      geom_boxplot(aes(d_var_hab, meas), outliers = F) +
+      #geom_jitter(aes(d_var_hab, meas), height = 0.2, alpha = 0.5) +
+      geom_text(aes(d_var_hab, meas, label = site), position = position_jitter(height = 0.2), alpha = 0.7, size = 3) +
+      geom_vline(xintercept = 0, linetype = 2)
+      #labs(title =  )
+  ) |> 
+  wrap_plots(ncol = 1)
+
+
+#scatter 
+var_hab_site_year_diff |> 
+  ggplot() +
+  geom_point(aes(var, hab)) +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_wrap(~meas, scales = "free")
+
+#how do differences compare across measures
+
+
+
+var_hab_site_year |> 
+  filter(meas %in% c("pct_pools", "pool_bnk_depth_mean"))
+
+  map(
+    ~.x |> 
+      ggplot() +
+      geom_boxplot(aes(d_var_hab, meas), outliers = F) +
+      #geom_jitter(aes(d_var_hab, meas), height = 0.2, alpha = 0.5) +
+      geom_text(aes(d_var_hab, meas, label = site), position = position_jitter(height = 0.2), alpha = 0.7, size = 3) +
+      geom_vline(xintercept = 0, linetype = 2)
+      #labs(title =  )
+  ) |> 
+  wrap_plots(ncol = 1)
+
+
+#min/mean/max
+
+#cv
+
+  
+
+var_hab_tsct |> 
+  filter(site == "BIB035") |> arrange(transect_letter) |> 
+  mutate(pd = pool_var != pool_hab) |> 
+  split(~pd)
+
+#just the site center monumented transect, should be same location
+var_hab_tsct |> 
+  filter(tsct_lett == "F" & transect_letter == "F") |> 
+  select(-starts_with("wet"), -starts_with("thl")) |> 
+  #filter(pool_var != pool_hab)
+  mutate(
+    d_bnk_wdth = bnk_wdth_var - bnk_wdth_hab,
+    d_bnk_hght = bnk_hght_var - bnk_hght_hab
+  ) |> 
+  arrange(desc(d_bnk_wdth)) |> #print(n = Inf)
+  summarise(
+    across(starts_with("d_"), list(mean = ~mean(abs(.))))
+  )
+
+
+var_hab_site_year |> 
+  mutate(
+    d_bnk_wdth_mean = bnk_wdth_mean_var - bnk_wdth_mean_hab #no bnk_hght in hab$transects_site_year
+  ) |> 
+  arrange(desc(d_bnk_wdth_mean)) |> 
+  select(cmplx_strm:pct_pools_hab, starts_with("bnk_wdth_mean"), d_bnk_wdth_mean) |> 
+  left_join(
+    var_hab_tsct |> 
+      filter(tsct_lett == "F" & transect_letter == "F") |> 
+      mutate(d_bnk_wdth_F = bnk_wdth_var - bnk_wdth_hab) |> 
+      select(site, year, d_bnk_wdth_F),
+    by = c("site", "year")    
+  ) |> 
+  #print(n = Inf)
+  #summarise(across(starts_with("d_"), list(mean = ~mean(abs(.)))))
+  ggplot() +
+  geom_boxplot(aes(d_bnk_wdth_mean, y = "site-year-mean")) +
+  geom_boxplot(aes(d_bnk_wdth_F, y = "site-year-F"))
+
+
+
+```
+
+
+
 # was resto detectable treatment vs reference: whole-stream treat-ref diff series
 
 ```{r strm_year_meas_mean_diff_mean_trt_ref}
@@ -926,6 +1354,21 @@ diff_mean_trt_ref <- left_join(
 
 ```
 
+```{r fig_trt_ref_diff_mean_cols}
+
+diff_mean_trt_ref |> 
+  ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
+  geom_col(position = position_dodge()) +
+  geom_smooth(method = "lm", se = F) +
+  geom_hline(yintercept = 0) +
+  #ggpmisc::stat_poly_line() +
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
+  labs(title = "Annual differences, treatment less reference streams",
+       subtitle = "Expect larger (abs) diffs with time (non-zero slopes) if actions detectable at whole-stream")
+```
+
 ```{r fig_ref_series_trt_vert_segments}
 diff_mean_trt_ref |> 
   ggplot(aes(year, fill = cmplx_strm_trt)) +
@@ -945,24 +1388,88 @@ diff_mean_trt_ref |>
 
 ```
 
+```{r acf_coint}
 
-```{r}
-d_mean_trt_ref |> 
-  ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
-  geom_col(position = position_dodge()) +
-  geom_smooth(method = "lm", se = F) +
-  geom_hline(yintercept = 0) +
-  #ggpmisc::stat_poly_line() +
-  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
-  labs(title = "Annual differences, treatment versus reference streams", subtitle = "Expect larger diffs with time (non-zero slopes) if actions detectable at whole-stream")
+strm_year_meas_mean |> 
+  nest(.by = c(cmplx, cmplx_strm, name)) |> 
+  mutate(
+    acf1 = map_dbl(data, ~as.vector(acf(.x$value, na.action = na.pass, lag.max = 1)$acf)[2])
+  ) |> 
+  select(-data) |> 
+  ggplot(aes(name, cmplx_strm)) +
+  geom_point(aes(size = abs(acf1), color = acf1)) +
+  geom_text(aes(label = round(acf1, 2))) +
+  scale_size_area() +
+  wacolors::scale_color_wa_c("lopez", midpoint = 0) 
+
+
+diff_mean_trt_ref |> 
+  nest(.by = c(cmplx_strm_trt, name)) |> 
+  mutate(
+    acf1 = map_dbl(data, ~as.vector(acf(.x$dval, na.action = na.pass, lag.max = 1)$acf)[2])
+  ) |> 
+  select(-data) |> 
+  ggplot(aes(name, cmplx_strm_trt)) +
+  geom_point(aes(size = abs(acf1), color = acf1)) +
+  geom_text(aes(label = round(acf1, 2))) +
+  scale_size_area() +
+  wacolors::scale_color_wa_c("lopez", midpoint = 0) +
+  labs(title = "Lag1 autcorr for treatment-reference difference series")
+
+
+#https://www.econometrics-with-r.org/16.3-cointegration.html using ur.df
+#https://www.quantstart.com/articles/Cointegrated-Augmented-Dickey-Fuller-Test-for-Pairs-Trading-Evaluation-in-R/ using tseries::adf.test
+#cointegrated if both nonstationary series, and a cointegration coef theta (potentially theta==1) such that differences y[t] - theta*x[t] series is stationary
+
+# z <- rep(0,100); for(i in 2:100){z[i] <- z[i-1] + rnorm(1)}
+# zz <- tibble(t = 1:100, z = z, z2 = z + runif(100, 0.1, 2))
+# ggplot(zz) + geom_line(aes(t, z)) + geom_line(aes(t, z2), color = 2)
+# #adf null is nonstationary, p<crit rejects to conclude stationary
+# tseries::adf.test(rnorm(100)) #stationary
+# tseries::adf.test(zz$z) #nonstationary
+# tseries::adf.test(zz$z2)#nonstationary
+
+
+diff_mean_trt_ref |> 
+  nest(.by = c(cmplx_strm_trt, name)) |> 
+  mutate(
+    adf_pval_trt = map_dbl(data, ~tseries::adf.test(na.omit(.x$value_trt))$p.value), #if this is nonstationary
+    adf_pval_ref = map_dbl(data, ~tseries::adf.test(na.omit(.x$value_ref))$p.value), #and this is nonstationary
+    adf_pval_d_trt_ref = map_dbl(data, ~tseries::adf.test(na.omit(.x$dval))$p.value), #but if this is stationary (theta = 1) then cointegrated
+    adf_pval_d_trt_ref_k1 = map_dbl(data, ~tseries::adf.test(na.omit(.x$dval), k = 1)$p.value), #test statistic is sensitive to lag!
+    #calculate theta (if not 1)
+    lm_trt_ref = map(data, ~lm(value_trt ~ value_ref, data = .x)),
+    #lm_theta = map_dbl(lm_trt_ref, ~.x$coefficients[2]),
+    adf_pval_lm_resid = map_dbl(lm_trt_ref, ~tseries::adf.test(na.omit(.x$resid))$p.value),
+    adf_pval_lm_resid_k1 = map_dbl(lm_trt_ref, ~tseries::adf.test(na.omit(.x$resid), k = 1)$p.value)
+    # ,
+    # adf_pval_urca_none = map(data, ~urca::ur.df(na.omit(.x$dval), type = "none", lags = 2, selectlags = "AIC")),
+    # adf_pval_urca_drift = map(data, ~urca::ur.df(na.omit(.x$dval), type = "drift", lags = 2, selectlags = "AIC")),
+    # adf_pval_urca_trend = map(data, ~urca::ur.df(na.omit(.x$dval), type = "trend", lags = 2, selectlags = "AIC"))
+  ) |>
+  select(-lm_trt_ref) |> 
+  arrange(adf_pval_lm_resid_k1) |> 
+#  filter(str_detect(cmplx_strm_trt, "Germany"), name == "pct_pools_mean")
+  print(n = Inf) 
+
+x <- diff_mean_trt_ref |> filter(str_detect(cmplx_strm_trt, "Germany"), name == "pct_gravel_mean") #gravel appears nonstationary s.t. not cointegrated, and tests above all fail to reject nonstationary, and test types below fail to reject null of nonstationary, so diffs nonstationary and not cointeg
+x <- diff_mean_trt_ref |> filter(str_detect(cmplx_strm_trt, "Germany"), name == "pct_pools_mean") #visually pools diffs appears (more?) stationary, adftest above without lmtheta fails to reject nonstat but theta!=1 rejects nonstationarity, so stationary diffs and coint; but all these are nonsig fail to reject nonstat and not coint
+urca::summary(urca::ur.df(x$dval, type = "none", lags = 2, selectlags = "AIC")) #fail to reject null nonstationary
+urca::summary(urca::ur.df(x$dval, type = "drift", lags = 2, selectlags = "AIC"))
+urca::summary(urca::ur.df(x$dval, type = "trend", lags = 2, selectlags = "AIC"))
+
+urca::summary(urca::ur.kpss(x$dval, use.lag = 1)) #fail to reject stationary for pools, so in agreement with lmtheta adf.tests?; rejects stationary for gravel (so nonstationary diff, not coint)
+tseries::kpss.test(x$dval) #same as ur.kpss, for pools fail to reject null stationary
+tseries::adf.test(x$dval) #same as mapped version above, fails to reject nonstationary
+
 ```
 
 
 # did whole-stream measure exhibit trend: series MK
 
+
 # [and/but] was resto detectable at reach-scale: focal sites series
+
 
 # across-site range distrib
 
