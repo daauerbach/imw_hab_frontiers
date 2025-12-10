@@ -22,8 +22,8 @@ format:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 10)
 
 library("tidyverse", quietly = T)
-library("sf")
-library("patchwork")
+# library("sf")
+# library("patchwork")
 library("gt")
 theme_set(theme_minimal()) 
 
@@ -902,6 +902,9 @@ d |>
 
 ## repeat sites
 
+per WD: STA026 is mislabeled, It should be BIB026
+not yet corrected 12/8/25
+
 ```{r imwvar_pull}
 #declare con_imwwar
 
@@ -1329,9 +1332,9 @@ var_hab_site_year |>
 ```
 
 
-# trying bayesian again
+# whole-stream brms: was resto detectable as posterior overlap
 
-```{r}
+```{r testing_brms_marss}
 #modified from chatgpt https://chatgpt.com/c/693728cf-7c24-832d-8417-34fb4da206f5
 
 # install.packages("brms")   # or use cmdstanr + brms backend if preferred
@@ -1517,6 +1520,262 @@ fit2 <- MARSS(yt, model = list(Z = Z, U = "unequal", R = R, Q = Q))
 
 ```
 
+```{r fitting}
+library(brms)
+
+#no exact 0 or 1 in either pct_*_mean measure (or 0s in any others)
+#so not adjusting by small value
+#3 NAs for ST streams in 2017
+#reorder stream name factor to have reference first in each complex
+#HC and LC already are, but switch deep and w twin
+strm_year_meas_mean <- strm_year |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("pool_wet"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"), -contains("lwd_all"),
+    -vlwd_mean
+  ) |> 
+  #summary()
+  mutate(
+    cmplx = str_sub(cmplx_strm, 1,2),
+    cmplx_strm = factor(cmplx_strm, levels = c(
+      "HC_Stavis Creek*", "HC_Seabeck Creek", "HC_Big Beef Creek", "HC_Little Anderson Creek",
+      "LC_Mill Creek*", "LC_Abernathy Creek", "LC_Germany Creek", 
+      "ST_West Twin River*", "ST_Deep Creek", "ST_East Twin River"
+    )),
+    year_scl = as.numeric(scale(year, center = TRUE, scale = sd(year)))
+  ) 
+
+strm_year_meas_mean_nest <- strm_year_meas_mean |> 
+  pivot_longer(cols = -c(cmplx, cmplx_strm, year, year_scl), names_to = "meas", values_to = "val") |> 
+  nest(.by = c(meas, cmplx)) |> 
+  mutate(fam = if_else(str_sub(meas,1,3)=="pct", "beta","lognorm")) |> 
+  arrange(meas, cmplx)
+
+
+# regression with stream-level intercepts & slopes, AR1 within stream
+strm_year_formula <- brms::bf(
+  val ~ 1 + cmplx_strm * year_scl + (1 + year_scl | cmplx_strm)   
+  ,
+  autocor = ~ brms::ar(time = year_scl, gr = cmplx_strm, p = 1)
+  )
+
+#iterate fitting per measure and complex, switching priors and family as needed
+#chains run fast, stan compilation takes as long as reasonable iterations
+strm_year_meas_mean_fit <- strm_year_meas_mean_nest |> 
+  mutate(
+    fit = map2(
+      data, fam,
+      \(x,y){
+        #base priors for lognorm, add extra for phi if beta fam
+        fmly = brms::lognormal() #default link is identity, expects original not log scale values
+        prs = c(
+          prior(normal(0, 2), class = "Intercept"), # on logit scale
+          prior(normal(0, 0.8), class = "b"),       # fixed effects
+          prior(student_t(3, 0, 1), class = "sd"),  # random effect SDs
+          prior(lkj(2), class = "cor")              # correlation matrix prior for random effects
+        )
+        
+        if(y == "beta"){
+          fmly = brms::Beta(link = "logit")
+          prs = c(prs, prior(gamma(0.33, 0.33), class = "phi"))
+        }
+        
+        f = brm(
+          formula = strm_year_formula,
+          data = x,
+          family = fmly,
+          prior = prs,
+          chains = 4, cores = 4, iter = 3000, warmup = 1500,
+          control = list(adapt_delta = 0.99, max_treedepth = 15),
+          seed = 676767
+        )
+        return(f)
+      })
+)
+
+saveRDS(strm_year_meas_mean_fit, "strm_year_meas_mean_fit.rds")
+
+```
+
+```{r draws_summary}
+
+summary(strm_year_meas_mean_fit$fit[[1]])
+#same but better tibble format
+as_draws_df(strm_year_meas_mean_fit$fit[[1]]) |> posterior::summarise_draws()
+#can also work directly on fit object but want draws for other stuff
+posterior::summarise_draws(strm_year_meas_mean_fit$fit[[1]])
+
+plot(strm_year_meas_mean_fit$fit[[1]], nvariables = 10)
+
+conditional_effects(strm_year_meas_mean_fit$fit[[1]])
+conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "cmplx_strm")
+conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl")
+conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm") 
+#not immediately obvious a quicker way to manipulate this ggplot object to unscale the year axis... 
+str( plot(conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm"), plot = F)[[1]] )
+
+
+## single tibble of main summary info
+pmap(list(
+  as.list(strm_year_meas_mean_fit$meas),
+  as.list(strm_year_meas_mean_fit$cmplx),
+  strm_year_meas_mean_fit$fit),
+  \(x,y,z){
+    posterior::summarise_draws(z) |>
+      mutate(meas = x, cmplx = y)
+  }) |>
+  bind_rows() |> 
+  select(meas, cmplx, everything())
+
+
+## get posterior draws
+## going to need some wrangling due to unique stream/var/col names per complex
+## works but will get messy with more than one complex
+strm_year_meas_mean_fit_draws <- pmap(list(
+  as.list(strm_year_meas_mean_fit$meas),
+  as.list(strm_year_meas_mean_fit$cmplx),
+  strm_year_meas_mean_fit$fit),
+  \(x,y,z){
+    as_draws_df(z) |> mutate(meas = x, cmplx = y)
+  }) |>
+  bind_rows() |>
+  select(meas, cmplx, everything())
+## also works but also will have unique names per complex...
+strm_year_meas_mean_fit_draws <- strm_year_meas_mean_fit |> 
+  mutate(drw = map(fit, ~as_draws_df(.x))) |> 
+  select(meas, cmplx, drw)
+
+```
+
+```{r posterior_pred}
+
+# #matrix, no dimnames
+# posterior_predict(
+#   strm_year_meas_mean_fit$fit[[1]],
+#   newdata = strm_year_meas_mean |> 
+#     select(cmplx, cmplx_strm, year, year_scl) |> 
+#     filter(cmplx == "ST") |> 
+#     mutate(cmplx_strm = droplevels(cmplx_strm))
+# )
+
+#tidybayes::predicted_draws(
+strm_year_meas_mean |> 
+  filter(cmplx == "ST") |> 
+  select(cmplx, cmplx_strm, year, year_scl) |> 
+  mutate(cmplx_strm = droplevels(cmplx_strm)) |> 
+  tidybayes::add_predicted_draws(
+    strm_year_meas_mean_fit$fit[[5]]
+  ) |> 
+  ggplot(aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
+#  tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.95, .8, .5), alpha = 0.25) +
+  tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.5), alpha = 0.25) +
+  geom_point(
+    data = strm_year_meas_mean |> 
+        filter(cmplx == "ST") |> 
+        #select(cmplx, cmplx_strm, year, pct_pools_mean)
+        select(cmplx, cmplx_strm, year, vlwd_per100_mean)
+    ,
+    aes(y = vlwd_per100_mean)
+  )
+
+#leaving defaults of re_formula=NULL for all group level effects
+#can summarise to desired quantiles inline, but 
+#tidybayes::stat_lineribbon does it already with '.width' argument...
+strm_year_meas_mean_pp <- strm_year_meas_mean_fit |> 
+  mutate(
+    pp = map2(
+      cmplx, fit,
+      ~strm_year_meas_mean |> 
+        filter(cmplx == .x) |> 
+        select(cmplx, cmplx_strm, year, year_scl) |> 
+        mutate(cmplx_strm = droplevels(cmplx_strm)) |> 
+        tidybayes::add_predicted_draws(.y) |> 
+        ungroup() |> 
+        summarise(
+          across(.prediction, list(med = ~median(.)))
+          , .by = c(cmplx, cmplx_strm, year)
+        )  
+      )
+    ,
+    pp = map2(
+      data, pp,
+      ~inner_join(.x, .y, by = c("cmplx_strm", "year")) |> 
+        select(-cmplx)
+      )
+    )
+
+strm_year_meas_mean_pp |> 
+  unnest_longer(c(pp)) |> 
+  unpack(c(pp)) |> 
+  ggplot(aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
+  geom_line(aes(y = .prediction_med)) +
+  geom_point(aes(y = val)) +
+  facet_wrap(~meas, scales = "free")
+
+
+
+strm_year_meas_mean_pp <- strm_year_meas_mean_fit |> 
+  mutate(
+    pp = map2(
+      cmplx, fit,
+      ~strm_year_meas_mean |> 
+        filter(cmplx == .x) |> 
+        select(cmplx, cmplx_strm, year, year_scl) |> 
+        mutate(cmplx_strm = droplevels(cmplx_strm)) |> 
+        tidybayes::add_predicted_draws(.y)
+      )
+    )
+
+#probably good enough not to bother doing something more custom
+strm_year_meas_mean_pp |> 
+  mutate(
+    gg = map2(
+      pp, data,
+      ~ggplot(data = .x, aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
+        tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.5), alpha = 0.25, linewidth = 1.1) +
+        geom_point(data = .y, aes(y = val)) +
+        geom_line(data = .y, aes(y = val), linetype = 3)
+      )
+    ,
+    gg = map2(
+      gg, meas, ~.x + 
+        scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+        labs(subtitle = .y, x = NULL, y = .y)
+      )
+  ) |> 
+  pull(gg) |> 
+  wrap_plots(guides = "collect")
+
+
+```
+
+```{r param_differences_NOT_STARTED}
+
+# Identify parameter names:
+# "b_year_s" is baseline slope (for reference level of treatment)
+# "b_treatmenttrt1:year_s" is offset for trt1, etc.
+# So slope_trt1 = b_year_s + b_treatmenttrt1:year_s
+# then calc difference of interaction term posteriors
+post |> 
+  mutate(
+    slope_ref = `b_year_s`,
+    slope_abe = `b_year_s` + `b_cmplx_strmLC_AbernathyCreek:year_s`,
+    slope_ger = `b_year_s` + `b_cmplx_strmLC_GermanyCreek:year_s`,
+    diff_abe_ref = slope_abe - slope_ref,
+    diff_ger_ref = slope_ger - slope_ref
+  ) |> 
+  select(
+    #starts_with("slope"), 
+    starts_with("diff")) |> 
+  summarise(
+    diff_abe_ref_mean = mean(diff_abe_ref),
+    diff_abe_ref_pgt0 = mean(diff_abe_ref > 0),
+    diff_ger_ref_mean = mean(diff_ger_ref),
+    diff_ger_ref_pgt0 = mean(diff_ger_ref > 0)
+  )
+
+```
 
 
 # was resto detectable treatment vs reference: whole-stream treat-ref diff series
