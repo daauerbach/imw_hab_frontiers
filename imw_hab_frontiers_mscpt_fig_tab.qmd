@@ -17,13 +17,11 @@ format:
       margin-width: 20px
 ---
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 10)
 
 library("tidyverse", quietly = T)
-# library("sf")
-# library("patchwork")
+library("patchwork")
 library("gt")
 theme_set(theme_minimal()) 
 
@@ -33,6 +31,49 @@ theme_set(theme_minimal())
 #load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_250307.RData")
 load("~/T/DFW-Team WDFW Watershed Synthesis - IMW analyses/imw_hab_251203.RData") #pool_weth_depth and pool_bnk_depth; no new EMAP query
 
+library(brms)
+
+#no exact 0 or 1 in either pct_*_mean measure (or 0s in any others)
+#so not adjusting by small value
+#3 NAs for ST streams in 2017
+#reorder stream name factor to have reference first in each complex
+#HC and LC already are, but switch deep and w twin
+strm_year_meas_mean <- strm_year |> 
+  select(
+    cmplx_strm, year, ends_with("_mean"),
+    -contains("pool_wet"),
+    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"), -contains("lwd_all"),
+    -vlwd_mean
+  ) |> 
+  #summary()
+  mutate(
+    cmplx = str_sub(cmplx_strm, 1,2),
+    cmplx_strm = factor(cmplx_strm, levels = c(
+      "HC_Stavis Creek*", "HC_Seabeck Creek", "HC_Big Beef Creek", "HC_Little Anderson Creek",
+      "LC_Mill Creek*", "LC_Abernathy Creek", "LC_Germany Creek", 
+      "ST_West Twin River*", "ST_Deep Creek", "ST_East Twin River"
+    )),
+    year_scl = as.numeric(scale(year, center = TRUE, scale = sd(year)))
+  ) 
+
+strm_year_meas_mean_fit <- readRDS("strm_year_meas_mean_fit.rds")
+
+#revised to make ref streams dark grey and boost vis contrasts
+pal_strm <- set_names(
+  c(c("grey20", "#3A270A", "tomato", "#965127"),
+    c("grey20", "darkblue", "cyan"),
+    c("darkgreen","grey20", "#516F25")
+    ),
+  c('Stavis Creek*','Seabeck Creek','Big Beef Creek','Little Anderson Creek',
+    'Mill Creek*','Abernathy Creek','Germany Creek',
+    'Deep Creek','West Twin River*','East Twin River'))
+pal_cmplx_strm <- set_names(
+  pal_strm,
+  c('HC_Stavis Creek*','HC_Seabeck Creek','HC_Big Beef Creek','HC_Little Anderson Creek',
+    'LC_Mill Creek*','LC_Abernathy Creek','LC_Germany Creek',
+    'ST_Deep Creek','ST_West Twin River*','ST_East Twin River'))
+
+ 
 ```
 
 
@@ -1332,7 +1373,7 @@ var_hab_site_year |>
 ```
 
 
-# whole-stream brms: was resto detectable as posterior overlap
+# was resto detectable: whole-stream brms of measure ~ year | stream
 
 ```{r testing_brms_marss}
 #modified from chatgpt https://chatgpt.com/c/693728cf-7c24-832d-8417-34fb4da206f5
@@ -1521,39 +1562,15 @@ fit2 <- MARSS(yt, model = list(Z = Z, U = "unequal", R = R, Q = Q))
 ```
 
 ```{r fitting}
-library(brms)
-
-#no exact 0 or 1 in either pct_*_mean measure (or 0s in any others)
-#so not adjusting by small value
-#3 NAs for ST streams in 2017
-#reorder stream name factor to have reference first in each complex
-#HC and LC already are, but switch deep and w twin
-strm_year_meas_mean <- strm_year |> 
-  select(
-    cmplx_strm, year, ends_with("_mean"),
-    -contains("pool_wet"),
-    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"), -contains("lwd_all"),
-    -vlwd_mean
-  ) |> 
-  #summary()
-  mutate(
-    cmplx = str_sub(cmplx_strm, 1,2),
-    cmplx_strm = factor(cmplx_strm, levels = c(
-      "HC_Stavis Creek*", "HC_Seabeck Creek", "HC_Big Beef Creek", "HC_Little Anderson Creek",
-      "LC_Mill Creek*", "LC_Abernathy Creek", "LC_Germany Creek", 
-      "ST_West Twin River*", "ST_Deep Creek", "ST_East Twin River"
-    )),
-    year_scl = as.numeric(scale(year, center = TRUE, scale = sd(year)))
-  ) 
-
+#tibble of measure-complex data subsets
 strm_year_meas_mean_nest <- strm_year_meas_mean |> 
   pivot_longer(cols = -c(cmplx, cmplx_strm, year, year_scl), names_to = "meas", values_to = "val") |> 
   nest(.by = c(meas, cmplx)) |> 
   mutate(fam = if_else(str_sub(meas,1,3)=="pct", "beta","lognorm")) |> 
   arrange(meas, cmplx)
 
-
 # regression with stream-level intercepts & slopes, AR1 within stream
+# unfortunately equatiomatic not extended to brms yet
 strm_year_formula <- brms::bf(
   val ~ 1 + cmplx_strm * year_scl + (1 + year_scl | cmplx_strm)   
   ,
@@ -1598,26 +1615,39 @@ saveRDS(strm_year_meas_mean_fit, "strm_year_meas_mean_fit.rds")
 
 ```
 
+With the focus on whether and how treatment stream observations detectably diverged from those in reference streams, we regressed the whole stream annual habitat measures against year, fitting Bayesian multilevel models per complex of measure against the stream-year interaction, with intercept and slope random effects per stream and with AR(1) autocorrelation in the year (R version 4.5.1, R Core Team 2025; package `brms` 2.23.0, Bürkner 2017). The proportion gravel and pools were specified with a beta family, a lognormal was used for the remaining (positive, real) measures, and all models used relatively uninformative priors. Models converged well with 3000 iterations on 4 chains with good Rhat and effective sample size diagnostic values.
+
+R Core Team (2025). _R: A Language and Environment for Statistical Computing_. R Foundation for Statistical Computing, Vienna, Austria. <https://www.R-project.org/>.
+
+Bürkner (2017). brms: An R Package for Bayesian Multilevel Models Using Stan. Journal of Statistical Software, 80(1), 1-28. doi:10.18637/jss.v080.i01
+
+
 ```{r draws_summary}
+# summary(strm_year_meas_mean_fit$fit[[1]])
+# #same but better tibble format
+# as_draws_df(strm_year_meas_mean_fit$fit[[1]]) |> posterior::summarise_draws()
+# #can also work directly on fit object but want draws for other stuff
+# posterior::summarise_draws(strm_year_meas_mean_fit$fit[[1]]) |> print(n = Inf)
+# 
+# plot(strm_year_meas_mean_fit$fit[[1]], nvariables = 10)
+# conditional_effects(strm_year_meas_mean_fit$fit[[1]])
+# conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "cmplx_strm")
+# conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl")
+# conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm") 
+# #not immediately obvious a quicker way to manipulate this ggplot object to unscale the year axis... 
+# str( plot(conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm"), plot = F)[[1]] )
 
-summary(strm_year_meas_mean_fit$fit[[1]])
-#same but better tibble format
-as_draws_df(strm_year_meas_mean_fit$fit[[1]]) |> posterior::summarise_draws()
-#can also work directly on fit object but want draws for other stuff
-posterior::summarise_draws(strm_year_meas_mean_fit$fit[[1]])
-
-plot(strm_year_meas_mean_fit$fit[[1]], nvariables = 10)
-
-conditional_effects(strm_year_meas_mean_fit$fit[[1]])
-conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "cmplx_strm")
-conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl")
-conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm") 
-#not immediately obvious a quicker way to manipulate this ggplot object to unscale the year axis... 
-str( plot(conditional_effects(strm_year_meas_mean_fit$fit[[1]], effects = "year_scl:cmplx_strm"), plot = F)[[1]] )
+# #default version with smooth continuous scaled year
+# map2(
+#   strm_year_meas_mean_fit$fit,
+#   strm_year_meas_mean_fit$meas,
+#   ~plot(conditional_effects(.x, effects = "year_scl:cmplx_strm"), plot = F)[[1]] +
+#     labs(subtitle = .y)
+# )
 
 
 ## single tibble of main summary info
-pmap(list(
+fit_summary <- pmap(list(
   as.list(strm_year_meas_mean_fit$meas),
   as.list(strm_year_meas_mean_fit$cmplx),
   strm_year_meas_mean_fit$fit),
@@ -1628,93 +1658,23 @@ pmap(list(
   bind_rows() |> 
   select(meas, cmplx, everything())
 
-
-## get posterior draws
-## going to need some wrangling due to unique stream/var/col names per complex
-## works but will get messy with more than one complex
-strm_year_meas_mean_fit_draws <- pmap(list(
-  as.list(strm_year_meas_mean_fit$meas),
-  as.list(strm_year_meas_mean_fit$cmplx),
-  strm_year_meas_mean_fit$fit),
-  \(x,y,z){
-    as_draws_df(z) |> mutate(meas = x, cmplx = y)
-  }) |>
-  bind_rows() |>
-  select(meas, cmplx, everything())
-## also works but also will have unique names per complex...
-strm_year_meas_mean_fit_draws <- strm_year_meas_mean_fit |> 
-  mutate(drw = map(fit, ~as_draws_df(.x))) |> 
-  select(meas, cmplx, drw)
+#could table-ize
+fit_summary |> 
+  filter(str_detect(variable, "year_scl")) |> 
+  filter(str_detect(variable, "cor|r_cmplx|sd", negate = T)) |> 
+  #arrange(desc(rhat))
+  #arrange(ess_bulk)
+  #arrange(desc(ess_bulk))
+  split(~meas)
 
 ```
 
-```{r posterior_pred}
-
-# #matrix, no dimnames
-# posterior_predict(
-#   strm_year_meas_mean_fit$fit[[1]],
-#   newdata = strm_year_meas_mean |> 
-#     select(cmplx, cmplx_strm, year, year_scl) |> 
-#     filter(cmplx == "ST") |> 
-#     mutate(cmplx_strm = droplevels(cmplx_strm))
-# )
-
-#tidybayes::predicted_draws(
-strm_year_meas_mean |> 
-  filter(cmplx == "ST") |> 
-  select(cmplx, cmplx_strm, year, year_scl) |> 
-  mutate(cmplx_strm = droplevels(cmplx_strm)) |> 
-  tidybayes::add_predicted_draws(
-    strm_year_meas_mean_fit$fit[[5]]
-  ) |> 
-  ggplot(aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
-#  tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.95, .8, .5), alpha = 0.25) +
-  tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.5), alpha = 0.25) +
-  geom_point(
-    data = strm_year_meas_mean |> 
-        filter(cmplx == "ST") |> 
-        #select(cmplx, cmplx_strm, year, pct_pools_mean)
-        select(cmplx, cmplx_strm, year, vlwd_per100_mean)
-    ,
-    aes(y = vlwd_per100_mean)
-  )
-
+```{r posterior_pred_series}
+#tidybayes::add_predicted_draws for consistent well-named tibble format
 #leaving defaults of re_formula=NULL for all group level effects
 #can summarise to desired quantiles inline, but 
 #tidybayes::stat_lineribbon does it already with '.width' argument...
-strm_year_meas_mean_pp <- strm_year_meas_mean_fit |> 
-  mutate(
-    pp = map2(
-      cmplx, fit,
-      ~strm_year_meas_mean |> 
-        filter(cmplx == .x) |> 
-        select(cmplx, cmplx_strm, year, year_scl) |> 
-        mutate(cmplx_strm = droplevels(cmplx_strm)) |> 
-        tidybayes::add_predicted_draws(.y) |> 
-        ungroup() |> 
-        summarise(
-          across(.prediction, list(med = ~median(.)))
-          , .by = c(cmplx, cmplx_strm, year)
-        )  
-      )
-    ,
-    pp = map2(
-      data, pp,
-      ~inner_join(.x, .y, by = c("cmplx_strm", "year")) |> 
-        select(-cmplx)
-      )
-    )
-
-strm_year_meas_mean_pp |> 
-  unnest_longer(c(pp)) |> 
-  unpack(c(pp)) |> 
-  ggplot(aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
-  geom_line(aes(y = .prediction_med)) +
-  geom_point(aes(y = val)) +
-  facet_wrap(~meas, scales = "free")
-
-
-
+#already have 'data' col on the _fit tibble so can directly access for plotting without joining
 strm_year_meas_mean_pp <- strm_year_meas_mean_fit |> 
   mutate(
     pp = map2(
@@ -1727,55 +1687,199 @@ strm_year_meas_mean_pp <- strm_year_meas_mean_fit |>
       )
     )
 
-#probably good enough not to bother doing something more custom
-strm_year_meas_mean_pp |> 
+#add plot as list col, keeping separate mutate to not re-add draws if plotting tweaks
+strm_year_meas_mean_pp_gg <- strm_year_meas_mean_pp |> 
   mutate(
+    meas_gg = case_when(
+      meas == "bankfull_W_D_mean" ~ "Bankfull W:D",
+      meas == "pct_gravel_mean" ~ "Ppn. gravel",
+      meas == "pct_pools_mean" ~ "Ppn. pool",
+      meas == "pool_bnk_depth_mean" ~ "Pool depth",
+      meas == "vlwd_per100_mean" ~ "VLWD/100m",
+      meas == "vlwd_vol_mean" ~ "VLWD vol."
+    )
+    ,
     gg = map2(
       pp, data,
       ~ggplot(data = .x, aes(x = year, color = cmplx_strm, fill = cmplx_strm)) +
-        tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(.5), alpha = 0.25, linewidth = 1.1) +
-        geom_point(data = .y, aes(y = val)) +
+        tidybayes::stat_lineribbon(aes(y = .prediction), .width = c(0.5), alpha = 0.25) +
+        geom_line(data = .x |> summarise(pred_med = median(.prediction), .groups = "drop"),
+                  aes(y = pred_med)) +
+        geom_point(data = .y, aes(y = val), size = 0.6) +
         geom_line(data = .y, aes(y = val), linetype = 3)
       )
     ,
     gg = map2(
-      gg, meas, ~.x + 
+      gg, meas_gg, ~.x + 
         scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-        labs(subtitle = .y, x = NULL, y = .y)
+        labs(
+          #subtitle = .y,
+          x = NULL, y = .y, color = NULL, fill = NULL)
       )
-  ) |> 
-  pull(gg) |> 
-  wrap_plots(guides = "collect")
+  ) 
 
+##by measure "type"
+
+#pools
+strm_year_meas_mean_pp_gg |> 
+  filter(str_detect(meas, "pool")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_pp_series_pools.png", height = 14, width = 11, bg = "white", dpi = 150)
+
+#wood
+strm_year_meas_mean_pp_gg |> 
+  filter(str_detect(meas, "vlwd")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_pp_series_wood.png", height = 14, width = 11, bg = "white", dpi = 150)
+
+#W:D and gravel
+strm_year_meas_mean_pp_gg |> 
+  filter(str_detect(meas, "bankfull|gravel")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_pp_series_WDgrvl.png", height = 14, width = 11, bg = "white", dpi = 150)
 
 ```
 
-```{r param_differences_NOT_STARTED}
+```{r posterior_params}
+# #tidybayes::get_variables(strm_year_meas_mean_fit$fit[[1]]) 
+# #underlying posterior:: version
+# as_draws_df(strm_year_meas_mean_fit$fit[[1]], variable = "^b_.*year_scl", regex = T) |> 
+#   unpack(c(.chain, .iteration, .draw))
+# #with indexing cols shifted
+# tidybayes::spread_draws(strm_year_meas_mean_fit$fit[[1]], `^b_.*year_scl$`, regex = T) |> 
+#   mutate(across(contains(":"), ~b_year_scl + .))
 
-# Identify parameter names:
-# "b_year_s" is baseline slope (for reference level of treatment)
-# "b_treatmenttrt1:year_s" is offset for trt1, etc.
-# So slope_trt1 = b_year_s + b_treatmenttrt1:year_s
-# then calc difference of interaction term posteriors
-post |> 
+
+#make another object with list cols of param posterior draws
+#first generate coef estimate for stream*year interaction as reference+treatment offset 
+#then list of Bhatt coef per complex & measure
+#then list of ggplots (coercing stream factor levels back to palette names)
+strm_year_meas_mean_drw_sprd <- strm_year_meas_mean_fit |> 
   mutate(
-    slope_ref = `b_year_s`,
-    slope_abe = `b_year_s` + `b_cmplx_strmLC_AbernathyCreek:year_s`,
-    slope_ger = `b_year_s` + `b_cmplx_strmLC_GermanyCreek:year_s`,
-    diff_abe_ref = slope_abe - slope_ref,
-    diff_ger_ref = slope_ger - slope_ref
+    meas = case_when(
+      meas == "bankfull_W_D_mean" ~ "Bankfull W:D",
+      meas == "pct_gravel_mean" ~ "Ppn. gravel",
+      meas == "pct_pools_mean" ~ "Ppn. pool",
+      meas == "pool_bnk_depth_mean" ~ "Pool depth",
+      meas == "vlwd_per100_mean" ~ "VLWD/100m",
+      meas == "vlwd_vol_mean" ~ "VLWD vol."
+    ),
+    drw = map(
+      fit,
+      ~tidybayes::spread_draws(.x, `^b_.*year_scl$`, regex = T) |> 
+        mutate(across(contains(":"), ~ b_year_scl + .)) #sum the ref and trt interaction offset 
+      ),
+    bc = map(
+      drw,
+      ~.x |> 
+        summarise(
+          across(
+            contains(":"),
+            list(bc = ~dispRity::bhatt.coeff(b_year_scl, .))
+          )
+        ) |> 
+        pivot_longer(ends_with("bc"), names_to = "Stream", values_to = "val")
+    ),
+    gg = map2(
+      drw, cmplx,
+      ~.x |> 
+        pivot_longer(starts_with("b_"), names_to = ".variable", values_to = ".value") |> 
+        mutate(
+          cmplx_strm = str_remove_all(.variable, "b_cmplx_strm|:year_scl"),
+          cmplx_strm = case_when(
+            cmplx_strm == "b_year_scl" & .y == "HC" ~ "HC_Stavis Creek*",
+            str_detect(cmplx_strm, "Seabeck") ~ "HC_Seabeck Creek",
+            str_detect(cmplx_strm, "Beef") ~ "HC_Big Beef Creek",
+            str_detect(cmplx_strm, "Anderson") ~ "HC_Little Anderson Creek",
+            cmplx_strm == "b_year_scl" & .y == "LC" ~ "LC_Mill Creek*",
+            str_detect(cmplx_strm, "Abernathy") ~ "LC_Abernathy Creek",
+            str_detect(cmplx_strm, "Germany") ~ "LC_Germany Creek",
+            cmplx_strm == "b_year_scl" & .y == "ST" ~ "ST_West Twin River*",
+            str_detect(cmplx_strm, "Deep") ~ "ST_Deep Creek",
+            str_detect(cmplx_strm, "East") ~ "ST_East Twin River"
+            ),
+          cmplx_strm = factor(cmplx_strm, levels = levels(strm_year_meas_mean$cmplx_strm))
+          ) |> 
+        ggplot(aes(color = cmplx_strm, fill = cmplx_strm)) +
+        scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+        geom_vline(xintercept = 0, linetype = 2, linewidth = 0.5) +
+        tidybayes::stat_halfeye(aes( .value, cmplx_strm), alpha = 0.3, show.legend = F)
+      ),
+    gg = map2(
+      gg, meas,
+      ~.x + labs(y = NULL, x = expression(beta["Stream*year"]), subtitle = .y)
+    )
   ) |> 
-  select(
-    #starts_with("slope"), 
-    starts_with("diff")) |> 
-  summarise(
-    diff_abe_ref_mean = mean(diff_abe_ref),
-    diff_abe_ref_pgt0 = mean(diff_abe_ref > 0),
-    diff_ger_ref_mean = mean(diff_ger_ref),
-    diff_ger_ref_pgt0 = mean(diff_ger_ref > 0)
+  select(meas, cmplx, drw, bc, gg)
+
+
+## do estimates of year effects (slope) for treatment streams differ from reference stream?
+
+#table of Bhattacharyya coefficients (0 strongly different to 1 identical distributions) for treatment streams pairwise vs ref stream per complex
+strm_year_meas_mean_drw_sprd |> 
+  select(meas, cmplx, bc) |> 
+  unnest_longer(bc) |> unpack(bc) |> 
+  pivot_wider(names_from = meas, values_from = val) |> 
+  mutate(Stream = str_remove_all(Stream, "b_cmplx_strm|:year_scl_bc")) |> 
+  gt(
+    groupname_col = "cmplx", 
+    caption = md("Bhattacharyya coef. of pairwise overlap<br>in treatment & reference posterior distributions of year effect")
+  ) |> 
+  fmt_number(decimals = 3) |> 
+  tab_style_body(
+    style = cell_text(weight = "bold"),
+    fn = \(x) x <= 0.9
   )
 
+
+##plot posteriors of slope estimate (year effect), showing overlap of 0 as well as mutual overlap
+##again by measure "type" for tractable plots
+#pools
+strm_year_meas_mean_drw_sprd |> 
+  filter(str_detect(meas, "ool")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_coef_pools.png", height = 9, width = 11, bg = "white", dpi = 150)
+
+#wood
+strm_year_meas_mean_drw_sprd |> 
+  filter(str_detect(meas, "VLWD")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_coef_wood.png", height = 9, width = 11, bg = "white", dpi = 150)
+
+#W:D and gravel
+strm_year_meas_mean_drw_sprd |> 
+  filter(str_detect(meas, "Bankfull|gravel")) |> 
+  pull(gg) |> 
+  wrap_plots(nrow = 3, byrow = F, guides = "collect") +
+  plot_annotation(tag_levels = "A")
+
+ggsave("rev_fig_coef_WDgrvl.png", height = 9, width = 11, bg = "white", dpi = 150)
+
+
 ```
+
+
+
+# [and/but] was resto detectable at reach-scale: focal sites series
+
+
+# across-site range distrib
+
 
 
 # was resto detectable treatment vs reference: whole-stream treat-ref diff series
@@ -1916,18 +2020,6 @@ tseries::adf.test(x$dval) #same as mapped version above, fails to reject nonstat
 #https://stats.stackexchange.com/questions/30569/what-is-the-difference-between-a-stationary-test-and-a-unit-root-test/235916#235916
 
 ```
-
-
-# did whole-stream measure exhibit trend: series MK
-
-
-# [and/but] was resto detectable at reach-scale: focal sites series
-
-
-# across-site range distrib
-
-
-
 
 # previous
 
@@ -2477,169 +2569,6 @@ ggsave(filename = "fig_strm_year_all_IQR.png", width = 12, height = 16, dpi = 15
 ```
 
 
-```{r}
-#did treatment streams diverge from reference streams?
-d_mean <- strm_year |> 
-  select(
-    cmplx_strm, year, ends_with("_mean"),
-    -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
-    -lwd_all_mean, -lwd_all_per100_mean, -vlwd_mean
-  ) |> 
-  #rename_with(~str_remove(., "_mean")) |> 
-  pivot_longer(cols = -c(cmplx_strm, year)) |> 
-  mutate(
-    cmplx = str_sub(cmplx_strm, 1,2)
-    #,name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
-  )
-
-d_mean_trt_ref <- left_join(
-  filter(d_mean, str_detect(cmplx_strm, "\\*", negate = T))
-  ,
-  filter(d_mean, str_detect(cmplx_strm, "\\*"))
-  ,
-  by = c("cmplx", "year", "name"), suffix = c("_trt","_ref")
-  ) |> 
-  mutate(
-    dval = value_trt - value_ref
-  )
-
-d_mean_trt_ref |> 
-  ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
-  geom_col(position = position_dodge()) +
-  geom_smooth(method = "lm", se = F) +
-  geom_hline(yintercept = 0) +
-  #ggpmisc::stat_poly_line() +
-  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
-  labs(title = "Annual differences, treatment versus reference streams", subtitle = "Expect larger diffs with time (non-zero slopes) if actions detectable at whole-stream")
-
-#playing with displaying differences on top of reference series 
-#maybe cool but arguably not really that helpful?
-d_mean_trt_ref |> 
-  ggplot(aes(year, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
-  geom_line(aes(y = value_ref, color = cmplx_strm_ref)) +
-  #geom_point(aes(y = value_trt)) +
-  geom_segment(aes(y = value_ref, yend = value_trt), position = position_dodge(width = 0.3)) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all")
-
-
-#every measure, each stream fit individually s.t. year is per-stream slope
-d_mean_trt_ref |> 
-  nest(.by = c(cmplx_strm_trt, name)) |> 
-  mutate(
-    lm_fit = map(data, ~lm(dval ~ year, data = .x)),
-    lm_est_year = map(lm_fit, ~broom::tidy(.x) |> filter(term=="year"))
-  ) |> 
-  unnest_wider(lm_est_year) |> 
-  arrange(p.value)
-
-#every measure, streams as factor for different intercepts plus shared year effect AND stream-specific slope
-d_mean_trt_ref |> 
-  nest(.by = c(cmplx, name)) |> 
-  mutate(
-    lm_fit = map(data, ~lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = .x)),
-    lm_est_year = map(lm_fit, ~broom::tidy(.x))
-  ) |> 
-  unnest_longer(lm_est_year) |> 
-  select(-data, -lm_fit) |> print(n = Inf)
-
-
-
-#couple of other presentations beside lm(dval ~ year): cumulative and average diff
-#these inform overall magnitude of departure (are differences small)
-#but do not capture change in time (are differences getting larger)
-d_mean_trt_ref |> 
-  #nest(.by = c(cmplx_strm_trt, name)) |> 
-  summarise(
-    across(dval, list(
-      sum = ~sum(.),
-      mean = ~mean(.),
-      abs_mean = ~mean(abs(.))
-    )),
-    .by = c(cmplx, cmplx_strm_trt, name)
-  )
-
-# #redo as var/IQR
-# #look similar to means but probably harder to think about?
-# #positive cols are larger IQR in treatment, neg slope less positive but greater than zero indicates smaller variation in treatment
-# #negative cols are smaller IQR in treatment such that pos slope less negative is increasing var in treatment (or shrinking in ref) etc.
-# d_iqr <- strm_year |> 
-#   select(
-#     cmplx_strm, year, ends_with("5"),
-#     -contains("lgth"), -contains("_m2"), -contains("bankfull_width"),
-#     -lwd_all_q25, -lwd_all_q75,
-#     -lwd_all_per100_q25, -lwd_all_per100_q75, 
-#     -vlwd_q25, -vlwd_q75 
-#   ) |>
-#   pivot_longer(-c(cmplx_strm, year)) |> 
-#   separate(name, into = c("name","q"), sep = "_q") |> 
-#   pivot_wider(names_from = q, values_from = value) |> 
-#   mutate(
-#     cmplx = str_sub(cmplx_strm, 1,2),
-#     iqr = `75`-`25`
-#     )
-# 
-# d_iqr_trt_ref <- left_join(
-#   filter(d_iqr, str_detect(cmplx_strm, "\\*", negate = T)) |> select(-`25`,-`75`)
-#   ,
-#   filter(d_iqr, str_detect(cmplx_strm, "\\*")) |> select(-`25`,-`75`)
-#   ,
-#   by = c("cmplx", "year", "name"), suffix = c("_trt","_ref")
-#   ) |> 
-#   mutate(
-#     dval = iqr_trt - iqr_ref
-#   )
-# 
-# d_iqr_trt_ref |> 
-#   ggplot(aes(year, dval, fill = cmplx_strm_trt, color = cmplx_strm_trt)) +
-#   geom_col(position = position_dodge()) +
-#   geom_smooth(method = "lm", se = F) +
-#   geom_hline(yintercept = 0) +
-#   #ggpmisc::stat_poly_line() +
-#   ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "p"))) +
-#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-#   facet_grid(cols = vars(cmplx), rows = vars(name), scales = "free", axes = "all") +
-#   labs(title = "Annual IQR anomalies versus reference streams")
-
-```
-
-
-```{r}
-#https://stats.stackexchange.com/questions/576499/how-to-compare-two-time-series-with-a-gam
-#instead of single fits per treatment stream against ref
-#model treatment streams as factors, pooled over complex
-
-d <- d_mean_trt_ref |> 
-  filter(cmplx == "LC", name == "vlwd_per100_mean") |> 
-  #filter(cmplx == "LC", name == "pct_gravel_mean") |> 
-  mutate(year = year - 2006)
-
-#ignoring individual treatment streams, not useful
-lm(dval ~ year, data = d) |> summary()
-#intercept differs by stream but same relationship to time
-lm(dval ~ year + cmplx_strm_trt, data = d) |> summary()
-#intercept and slope differ with time plus shared per-year effect
-lm(dval ~ year + cmplx_strm_trt + year:cmplx_strm_trt, data = d) |> 
-  #summary()
-  broom::glance()
-#intercept and slope-against-time differ, no common time effect
-#with only 2 levels to stream these are effectively the same
-lm(dval ~ cmplx_strm_trt + year:cmplx_strm_trt, data = d) |> 
-    #summary()
-  broom::glance()
-#with fixed year effects, no "slope"
-lm(dval ~ factor(year) + cmplx_strm_trt, data = d) |> summary()
-
-#panel or repeat measures or longitudinal study regression?
-#https://www.econometrics-with-r.org/10.4-regression-with-time-fixed-effects.html
-# #if I had a worthwhile independent measure of "restored" could do something like
-# lm(dval ~ resto_amount + cmplx_strm_trt + year:cmplx_strm_trt, data = d)
-# # or use plm::plm, but I don't so I can't
-
-
-```
 
 
 
