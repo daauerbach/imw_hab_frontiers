@@ -857,7 +857,6 @@ site_meta |>
 pending focal sites from WD and KK
 
 ```{r site_low_high_variation}
-
 bind_rows( 
   semi_join(site_year, site_meta |> slice_max(pct_gravel_sd, n = 4, by = cmplx_strm), by = "site") |> 
     mutate(sdtype = "max-sd")
@@ -938,6 +937,146 @@ d |>
     title = "Sites per stream with smallest and largest ranges of interannual variation in very large wood count per 100m"
   ) +
   theme_light()
+```
+
+
+```{r site_low_high_variation_CV}
+
+#at least for bankfull W:D, do not have inflationary decimal values
+d <- site_meta |> 
+  mutate(
+        cmplx_strm = factor(cmplx_strm, levels = c(
+      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
+      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
+      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
+    ))
+  ) |> 
+  select(cmplx_strm, site, year_min:year_n, 
+         contains("bankfull_W_D") , contains("bankfull_width"), contains("pool_bnk_depth")
+         ) |> 
+  #arrange(bankfull_W_D_mean)
+  #arrange(bankfull_W_D_sd)
+  mutate(
+    #cv = bankfull_W_D_sd / bankfull_W_D_mean
+    bankfull_W_D_cv = bankfull_W_D_sd / bankfull_W_D_mean,
+    bankfull_width_cv = bankfull_width_sd / bankfull_width_mean,
+    pool_bnk_depth_cv = pool_bnk_depth_sd / pool_bnk_depth_mean
+  )
+
+#distributions across sites of per-site CV through time
+#just W:D
+d |> 
+  ggplot() + 
+  geom_boxplot(
+    aes(cmplx_strm, bankfull_W_D_cv, fill = cmplx_strm, color = cmplx_strm), 
+    varwidth = T, alpha = 0.4, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  scale_x_discrete(guide = guide_axis(angle = 270))
+
+#all 3, W:D, bankfull and depth
+{
+d |> 
+  select(cmplx_strm, site, ends_with("_cv")) |> 
+  pivot_longer(ends_with("_cv"), names_to = "meas", values_to = "cv") |> 
+  mutate(
+    meas = case_when(
+     meas == "bankfull_W_D_cv" ~ "Bankfull W:D",
+     meas == "bankfull_width_cv" ~ "Bankfull width",
+     meas == "pool_bnk_depth_cv" ~ "Pool depth"
+  )) |> 
+  ggplot() + 
+  geom_boxplot(
+    aes(cmplx_strm, cv, fill = cmplx_strm, color = cmplx_strm), 
+    varwidth = T, alpha = 0.4, show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  scale_x_discrete(guide = guide_axis(angle = 270)) +
+  facet_wrap(~meas, ncol = 1) + #scales = "free_y"
+  labs(x = NULL, y = "CV")
+}+{
+d |> 
+  mutate(cmplx = str_sub(cmplx_strm, 1,2)) |> 
+  ggplot() +
+  geom_point(aes(bankfull_width_mean, bankfull_W_D_cv, color = cmplx_strm), show.legend = F) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  facet_wrap(~cmplx) +
+    labs(
+      x = "Per-site bankfull width mean over time",
+      y = "Per-site W:D coef. var. over time"
+    )
+}
+
+ggsave(filename = "rev_fig_site_cv_WD_box_points.png", width = 11, height = 9, dpi = 300, bg = "white")
+
+
+#measures through time for hi/lo CV
+#different way to capture that difference between hi and low CV is not actually that big
+bind_rows( 
+  semi_join(site_year, d |> slice_max(bankfull_W_D_cv, n = 5, by = cmplx_strm), by = "site") |> mutate(type = "max-CV"),
+  semi_join(site_year, d |> slice_min(bankfull_W_D_cv, n = 5, by = cmplx_strm), by = "site") |> mutate(type = "min-CV")
+  ) |> 
+  mutate(type = factor(type, levels = c("min-CV","max-CV"))) |> 
+  ggplot(aes(year, bankfull_W_D, group = site, color = cmplx_strm)) +
+  scale_color_manual(values = pal_cmplx_strm) +
+  geom_line(linewidth = 0.3, show.legend = F) + geom_point(size = 0.5, show.legend = F) +
+  facet_grid(rows = vars(cmplx_strm), cols = vars(type), scales = "free") +
+  labs(
+    title = "Sites per stream with smallest and largest interannual CV in bankfull W:D"
+  ) +
+  theme_light()
+
+
+
+
+#whole stream...spatial CV and grand CV
+
+##Evolution in time of SPATIAL per-year whole-stream CV: rebuild since took SD and CV off
+site_year |>
+  summarise(
+    n_site_with_bnk = length(na.omit(bankfull_width)),
+    across(
+      c(
+        bankfull_width,
+        bankfull_W_D,
+        #pct_gravel, 
+        #pct_pools, 
+        #pool_wet_depth,
+        pool_bnk_depth #,
+        #up_down_lgth,
+        #vlwd_per100, 
+        #vlwd_vol
+        ),
+      list(
+        mean = ~mean(., na.rm = T),
+        sd = ~sd(., na.rm = T)
+      )
+    )
+    , .by = c("cmplx_strm", "year")
+  ) |> 
+  mutate(
+    bankfull_W_D_cv = bankfull_W_D_sd / bankfull_W_D_mean,
+    bankfull_width_cv = bankfull_width_sd / bankfull_width_mean,
+    pool_bnk_depth_cv = pool_bnk_depth_sd / pool_bnk_depth_mean
+  ) |> 
+  #arrange(bankfull_W_D_cv)
+  arrange(desc(bankfull_W_D_cv)) |> 
+  ggplot(aes(year, bankfull_W_D_cv, color = cmplx_strm)) +
+  geom_line() +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill"))
+
+#through time "grand" CV of whole-stream mean
+#lower ("stabilized") than box
+strm_year |> 
+  select(cmplx_strm, year, contains("bankfull_W_D")) |> 
+  summarise(
+    across(
+      bankfull_W_D_mean,
+      list(
+        mean = ~mean(., na.rm = T),
+        sd = ~sd(., na.rm = T)
+      )),
+    .by = cmplx_strm) |> 
+    mutate(bankfull_W_D_cv = bankfull_W_D_mean_sd / bankfull_W_D_mean_mean)
+
 
 ```
 
@@ -1621,11 +1760,27 @@ saveRDS(strm_year_meas_mean_fit, "strm_year_meas_mean_fit.rds")
 
 ```
 
-With the focus on whether and how treatment stream observations detectably diverged from those in reference streams, we regressed the whole stream annual habitat measures against year, fitting Bayesian multilevel models per complex of measure against the stream-year interaction, with intercept and slope random effects per stream and with AR(1) autocorrelation in the year (R version 4.5.1, R Core Team 2025; package `brms` 2.23.0, Bürkner 2017). The proportion gravel and pools were specified with a beta family, a lognormal was used for the remaining (positive, real) measures, and all models used relatively uninformative priors. Models converged well with 3000 iterations on 4 chains with good Rhat and effective sample size diagnostic values.
+[Methods]
 
-R Core Team (2025). _R: A Language and Environment for Statistical Computing_. R Foundation for Statistical Computing, Vienna, Austria. <https://www.R-project.org/>.
+With the focus in this paper on whether and how treatment stream observations diverged detectably from those in reference streams, we regressed the whole stream annual habitat measures against year, fitting Bayesian multilevel models per complex of each response measure against the stream-year interaction, allowing intercept and slope effects per stream and with AR(1) autocorrelation in the year (R version 4.5.1, R Core Team 2025; package `brms` 2.23.0, Bürkner 2017). This straightforward analysis approach was adopted following extensive exploration of the data with a variety of visualization and statistical options. The proportion gravel and proportion pools were specified with a beta response family, a lognormal was used for the remaining (positive, real) measures, and all models used relatively uninformative priors. Model diagnostics showed good convergence with 3000 iterations on 4 chains. In addition to examining posterior predictions and parameter estimates, we calculated pairwise Bhattacharyya coefficients for each treatment stream parameter distribution relative to the reference as a means of evaluating the overlap in the estimates of year effects (i.e., evaluating the consistency of both central tendency and variation in slopes through time), with 1 meaning perfect agreement and 0 indicating no overlap (package `dispRity`, Guillerme 2018).
 
-Bürkner (2017). brms: An R Package for Bayesian Multilevel Models Using Stan. Journal of Statistical Software, 80(1), 1-28. doi:10.18637/jss.v080.i01
+[Results]
+
+Models of whole-stream habitat measures indicated little difference among streams in the magnitude and direction of consistent change through time. In most cases, differences among streams within each complex that were apparent in 2007 persisted throughout data collection, showing few signs of the effects of interventions (Figure NNN posterior preds) [*showing spread in the y-axis values among streams is similar at the beginning, middle, and end of the series despite any up/down-slope*]. Increases or decreases in many measures were weakly discernible and quite uncertain, with posterior distributions and both 95% and 50% credible intervals for the per-stream effects of year centered on and including 0 (in log link space). Most of these distributions were also highly overlapping among streams (Figures: param distributions), with Bhattacharyya coefficient values near 1 (table Bhatt coef). 
+
+Posterior predictions for pool frequency and depth measures offered no strong evidence that treatment stream trajectories differed from those in the Mill, Stavis and West Twin reference series. Big Beef Creek was the only system to exhibit even modest separation from other streams in terms of an increase in pool frequency and depth. Consistent with the common field observation of bedload deposition and aggradation, the estimated change in whole-stream pool depth was negative (shallower) in all streams with the exception of a relatively uncertain and weakly positive trend in Germany Creek. Moreover, the slight departures found in the Deep Creek and Little Anderson series were towards a greater decrease in depth (figs panels D, E, F). 
+
+The whole-stream average bankfull width to bankfull depth ratios showed evidence of increases through time in all streams but Big Beef, consistent with the indications of slighly decreasing average pool depths. The estimated increase in this measure in Germany Creek was appreciably greater than in Abernathy or Mill (Bhatt. coef. 0.64 vs Mill), and the estimates for Little Anderson and Big Beef were distinct from that for Stavis (and Seabeck) Creek, though with opposing directions (greater increase in Little Anderson; no change in Big Beef). The predicted proportion of gravel substrate followed similar trajectories in the Straits and Lower Columbia streams, with no substantive differences in the estimated rates of increase for the Straits and Germany Creek having a larger but still overlapping increase. Estimates for all streams in Hood Canal included an appreciable probability of no change, but Seabeck Creek had a median decrease while the others were slightly increasing. 
+
+The clearest evidence of restoration interventions at the whole-stream scale was apparent in the measures of very large wood in Abernathy Creek. The series of both piece count per 100m and volume showed plain departures from the Mill Creek reference (and Germany Creek), with no overlap in 50% credible intervals and the lowest Bhattacharyya coefficient values in the analysis. The increase shifted the estimated instream wood in Abernathy the least at the outset of data collection in 2007 to the most in 2024, with the difference strengthening after approximately 2019. However, tn the Straits and Hood Canal, despite small differences among streams in the median change through time, the overall posterior distributions of estimate were highly overlapping. A weakling increasing trajectory in Little Anderson Creek differed slightly from the weak decrease in the reference Stavis Creek.
+
+
+
+R Core Team, 2025. _R: A Language and Environment for Statistical Computing_. R Foundation for Statistical Computing, Vienna, Austria. <https://www.R-project.org/>.
+
+Bürkner, P. 2017. brms: An R Package for Bayesian Multilevel Models Using Stan. Journal of Statistical Software, 80(1), 1-28. doi:10.18637/jss.v080.i01
+
+Guillerme T., 2018. dispRity: A modular R package for measuring disparity. Methods Ecol Evol. 2018;00:1-9. https://doi.org/10.1111/2041-210X.13022
 
 ```{r}
 lm_eq <- lm(val ~ 1 + cmplx_strm * year_scl, data = strm_year_meas_mean_nest$data[[1]]) 
@@ -1633,7 +1788,7 @@ equatiomatic::extract_eq(lm_eq)
 equatiomatic::eq_(lm_eq)
 ```
 
-$$ \operatorname{measure} = \alpha + \beta_{trtmnt-stream_i} + \beta_{ref-stream}(\operatorname{year}) + \beta_{trtmnt-stream_i}(\operatorname{stream} \times \operatorname{year}) + \epsilon $$
+$$ \operatorname{measure} = \alpha_{ref-stream} + \beta_{trtmnt-stream_i} + \beta_{ref-stream}(\operatorname{year}) + \beta_{trtmnt-stream_i}(\operatorname{stream} \times \operatorname{year}) + \epsilon $$
 
 ```{r draws_summary}
 # summary(strm_year_meas_mean_fit$fit[[1]])
@@ -1868,6 +2023,7 @@ strm_year_meas_mean_drw_sprd |>
   unnest_longer(bc) |> unpack(bc) |> 
   pivot_wider(names_from = meas, values_from = val) |> 
   mutate(Stream = str_remove_all(Stream, "b_cmplx_strm|:year_scl_bc")) |> 
+  #writexl::write_xlsx("tbl_bhatt_coef.xlsx")
   gt(
     groupname_col = "cmplx", 
     caption = md("Bhattacharyya coef. of pairwise overlap<br>in treatment & reference posterior distributions of year effect")
@@ -1974,16 +2130,153 @@ strm_year_meas_mean_pp$pp[[1]] |> filter(str_detect(cmplx_strm, "Stavis")) |> su
 
 ```
 
+# per-site ranges
+
+```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
+d <- site_meta |> #glimpse()
+  #filter(year_n > 16) |> 
+  select(cmplx_strm, site, 
+         ends_with("min"), ends_with("max"), 
+         -starts_with("year"), 
+         -contains("lwd_all"), #only 'very' large wood
+         -vlwd_min, -vlwd_max #use density not counts
+         , -contains("bankfull_width")
+         , -contains("wetted")
+         , -contains("_m2")
+         , -contains("pool_wet_depth")
+         ) |> 
+  pivot_longer(-c(cmplx_strm, site)) |> 
+  mutate(
+    m = str_sub(name, -3,-1), # m = map_chr(meas, ~last(str_split_1(.x,"_"))),
+    name = str_remove(name, paste0("_",m)) # meas = map2_chr(meas, m, ~str_remove(.x, paste0("_",.y)))
+  ) |> 
+  pivot_wider(names_from = m, values_from = value) |> 
+  mutate(
+    site_rng = max - min,
+  ) |> 
+  drop_na(site_rng) |> 
+  filter(is.finite(site_rng))
 
 
-# [and/but] was resto detectable at reach-scale: focal sites series
+d |> 
+    mutate(
+    cmplx_strm = factor(cmplx_strm, levels = c(
+      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
+      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
+      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
+    ))
+    ,
+    #name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
+    name = factor(
+      name, 
+      levels = c("pct_pools","pool_bnk_depth", "bankfull_W_D","pct_gravel", "vlwd_per100","vlwd_vol"),
+      labels = c("Ppn. pool","Pool depth", "Bankfull W:D","Ppn. gravel", "VLWD/100m","VLWD vol.")
+      )
+  ) |> 
+  ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
+  geom_vline(xintercept = 0) +
+  ggridges::geom_density_ridges(
+    scale = 0.9,
+    alpha = 0.6,
+    show.legend = F) +
+  ggdist::stat_dots(
+    #this would work in a split/map pattern but with faceting here: aes(slab_alpha = after_stat(x)),
+    orientation = "horizontal",
+    alpha = 0.6,
+    show.legend = F
+  ) +
+  ggdist::stat_pointinterval(
+    orientation = "horizontal",
+    color = "black",
+    .width = c(0.5, 0.95),
+    shape = 3, #18,
+    fatten_point = 3,
+    show.legend = F
+  ) +
+  coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
+  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
+  facet_wrap(~name, 
+             nrow = 1, #ncol = 3,
+             scales = "free_x") +
+  labs(
+    x = "", y = ""
+    # ,
+    # title = "Stream network variation in range of habitat measures through time",
+    # subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
+  )
+
+#ggsave(filename = "fig_SVN_site_range_ridges2.png", width = 11, height = 9, dpi = 300, bg = "white")
+ggsave(filename = "rev_fig_site_range_ridges.png", width = 11, height = 9, dpi = 300, bg = "white")
+
+```
+
+```{r tabSNV_site_range_ridges, tab.cap="Table SNV: Mean, minimum, and maximum range per-site in habitat measures across streams."}
+d_gt <- d |> 
+  summarise(
+    across(
+      #c(min, max, site_rng), 
+      site_rng,
+      list(
+        min = ~min(.,na.rm = T),
+        mean = ~mean(.,na.rm = T),
+        max = ~max(.,na.rm = T)
+        )
+      )
+    ,.by = c(cmplx_strm, name)
+  ) |>
+  left_join(
+    distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm"
+  ) |> 
+  pivot_wider(names_from = name, values_from = contains("site_rng")) |> 
+  select(
+    cmplx_desc, cmplx_strm, #strm,
+    contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd")
+  )
+
+d_gt |> 
+  gt(
+    groupname_col = "cmplx_desc", 
+    rowname_col = "cmplx_strm", 
+    caption = "Mean, minimum, and maximum range per-site in habitat measures across streams"
+    ) |> 
+  fmt_number(where(is.numeric), decimals = 0) |> 
+  fmt_number(contains("pool_depth"), decimals = 1) |> 
+  fmt_number(contains("pct"), decimals = 2) |> 
+#  tab_spanner("Bankfull W", contains("width")) |> 
+  tab_spanner("BnkW:D", contains("W_D")) |> 
+  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
+  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
+  tab_spanner("Pool depth", contains("pool_depth")) |> 
+  tab_spanner("VLWD/100m", contains("per100")) |> 
+  tab_spanner("VLWD vol.", contains("vol")) |> 
+  cols_label_with(contains("min"), ~"min") |> 
+  cols_label_with(contains("mean"), ~"mean") |> 
+  cols_label_with(contains("max"), ~"max") |> 
+  tab_style(
+    style = list(cell_borders("left", weight = px(1.5))), 
+    locations = cells_body(columns = contains("min"))
+  ) |> 
+  tab_style(
+    style = list(cell_text(style = "italic")), 
+    locations = map(3:17, 
+      ~cells_body(columns = .x, rows = which.min(unlist(d_gt[,.x])))
+    )
+  ) |> 
+  tab_style(
+    style = list(cell_text(decorate = "underline")), 
+    locations = map(3:17, 
+      ~cells_body(columns = .x, rows = which.max(unlist(d_gt[,.x])))
+    )
+  )
+
+```
 
 
-# across-site range distrib
+# [and/but] was resto detectable at reach-scale: focal sites series?
 
+...left for spring 2026?
 
-
-# was resto detectable treatment vs reference: whole-stream treat-ref diff series
+# INITIAL REVISION TESTING: was resto detectable treatment vs reference: whole-stream treat-ref diff series
 
 ```{r strm_year_meas_mean_diff_mean_trt_ref}
 strm_year_meas_mean <- strm_year |> 
@@ -2122,173 +2415,8 @@ tseries::adf.test(x$dval) #same as mapped version above, fails to reject nonstat
 
 ```
 
+
 # previous
-
-```{r figSVN_site_range_ridges, fig.cap="Figure SVN: Stream network variation in temporal variation of habitat measures. Dots are range (max - min) for individual sites; lower interval bar shows IQR and among-site median (diamond). Asterisks designate 'control' streams in original study design."}
-d <- site_meta |> #glimpse()
-  #filter(year_n > 16) |> 
-  select(cmplx_strm, site, 
-         ends_with("min"), ends_with("max"), 
-         -starts_with("year"), 
-         -contains("lwd_all"), #only 'very' large wood
-         -vlwd_min, -vlwd_max #use density not counts
-         , -contains("bankfull_width")
-         , -contains("wetted")
-         , -contains("_m2")
-         ) |> 
-  pivot_longer(-c(cmplx_strm, site)) |> 
-  mutate(
-    m = str_sub(name, -3,-1), # m = map_chr(meas, ~last(str_split_1(.x,"_"))),
-    name = str_remove(name, paste0("_",m)) # meas = map2_chr(meas, m, ~str_remove(.x, paste0("_",.y)))
-  ) |> 
-  pivot_wider(names_from = m, values_from = value) |> 
-  mutate(
-    site_rng = max - min,
-  ) |> 
-  drop_na(site_rng) |> 
-  filter(is.finite(site_rng))
-
-# d |> 
-#   ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
-#   geom_vline(xintercept = 0) +
-#   ggridges::geom_density_ridges(
-#     scale = 0.9,
-#     alpha = 0.6,
-#     show.legend = F) +
-#   ggdist::stat_dots(
-#     #this would work in a split/map pattern but with faceting here: aes(slab_alpha = after_stat(x)),
-#     orientation = "horizontal",
-#     alpha = 0.6,
-#     show.legend = F
-#   ) +
-#   ggdist::stat_pointinterval(
-#     orientation = "horizontal",
-#     color = "black",
-#     .width = c(0.5, 0.95),
-#     shape = 3, #18,
-#     fatten_point = 3,
-#     show.legend = F
-#   ) +
-#   coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
-#   scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-#   facet_wrap(~name, 
-#              nrow = 1, #ncol = 3,
-#              scales = "free_x") +
-#   labs(
-#     x = "", y = ""
-#     ,
-#     title = "Stream network variation in range of habitat measures through time",
-#     subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
-#   )
-# 
-# ggsave(filename = "fig_SVN_site_range_ridges.png", width = 11, height = 9, dpi = 150, bg = "white")
-
-d |> 
-    mutate(
-    cmplx_strm = factor(cmplx_strm, levels =   c(
-      'HC_Little Anderson Creek','HC_Big Beef Creek','HC_Seabeck Creek','HC_Stavis Creek*',
-      'LC_Germany Creek','LC_Abernathy Creek','LC_Mill Creek*',
-      'ST_East Twin River','ST_West Twin River*','ST_Deep Creek'
-    ))
-    ,
-    name = factor(name, levels = c("vlwd_per100","vlwd_vol","pct_pools","pool_depth","pct_gravel","bankfull_W_D"))
-  ) |> 
-  ggplot(mapping = aes(site_rng, fct_rev(cmplx_strm), color = cmplx_strm, fill = cmplx_strm)) +
-  geom_vline(xintercept = 0) +
-  ggridges::geom_density_ridges(
-    scale = 0.9,
-    alpha = 0.6,
-    show.legend = F) +
-  ggdist::stat_dots(
-    #this would work in a split/map pattern but with faceting here: aes(slab_alpha = after_stat(x)),
-    orientation = "horizontal",
-    alpha = 0.6,
-    show.legend = F
-  ) +
-  ggdist::stat_pointinterval(
-    orientation = "horizontal",
-    color = "black",
-    .width = c(0.5, 0.95),
-    shape = 3, #18,
-    fatten_point = 3,
-    show.legend = F
-  ) +
-  coord_cartesian(xlim = c(0, NA), ylim = c(0.7, NA), expand = F) +
-  scale_color_manual(values = pal_cmplx_strm, aesthetics = c("color","fill")) +
-  facet_wrap(~name, 
-             nrow = 1, #ncol = 3,
-             scales = "free_x") +
-  labs(
-    x = "", y = ""
-    # ,
-    # title = "Stream network variation in range of habitat measures through time",
-    # subtitle = "Dots are range (max - min) for individual sites, interval shows median, IQR and 95% span"
-  )
-
-ggsave(filename = "fig_SVN_site_range_ridges2.png", width = 11, height = 9, dpi = 300, bg = "white")
-
-```
-
-```{r tabSNV_site_range_ridges, tab.cap="Table SNV: Mean, minimum, and maximum range per-site in habitat measures across streams."}
-d_gt <- d |> 
-  summarise(
-    across(
-      #c(min, max, site_rng), 
-      site_rng,
-      list(
-        min = ~min(.,na.rm = T),
-        mean = ~mean(.,na.rm = T),
-        max = ~max(.,na.rm = T)
-        )
-      )
-    ,.by = c(cmplx_strm, name)
-  ) |>
-  left_join(
-    distinct(site_meta, cmplx_strm, cmplx_desc), by = "cmplx_strm"
-  ) |> 
-  pivot_wider(names_from = name, values_from = contains("site_rng")) |> 
-  select(
-    cmplx_desc, cmplx_strm, #strm,
-    contains("width"), contains("W_D"), contains("gravel"), contains("pools"), contains("depth"), contains("vlwd")
-  )
-
-d_gt |> 
-  gt(
-    groupname_col = "cmplx_desc", 
-    rowname_col = "cmplx_strm", 
-    caption = "Mean, minimum, and maximum range per-site in habitat measures across streams"
-    ) |> 
-  fmt_number(where(is.numeric), decimals = 0) |> 
-  fmt_number(contains("pool_depth"), decimals = 1) |> 
-  fmt_number(contains("pct"), decimals = 2) |> 
-#  tab_spanner("Bankfull W", contains("width")) |> 
-  tab_spanner("BnkW:D", contains("W_D")) |> 
-  tab_spanner("Ppn. gravel", contains("pct_gravel")) |> 
-  tab_spanner("Ppn. pools", contains("pct_pool")) |> 
-  tab_spanner("Pool depth", contains("pool_depth")) |> 
-  tab_spanner("VLWD/100m", contains("per100")) |> 
-  tab_spanner("VLWD vol.", contains("vol")) |> 
-  cols_label_with(contains("min"), ~"min") |> 
-  cols_label_with(contains("mean"), ~"mean") |> 
-  cols_label_with(contains("max"), ~"max") |> 
-  tab_style(
-    style = list(cell_borders("left", weight = px(1.5))), 
-    locations = cells_body(columns = contains("min"))
-  ) |> 
-  tab_style(
-    style = list(cell_text(style = "italic")), 
-    locations = map(3:17, 
-      ~cells_body(columns = .x, rows = which.min(unlist(d_gt[,.x])))
-    )
-  ) |> 
-  tab_style(
-    style = list(cell_text(decorate = "underline")), 
-    locations = map(3:17, 
-      ~cells_body(columns = .x, rows = which.max(unlist(d_gt[,.x])))
-    )
-  )
-
-```
 
 In addition to the shared pattern of within-network heterogeneity in the magnitude of temporal variation, consistent directional change at the watershed scale was rarely detectable in the time series of habitat measures summarized across sites per year to a 'whole-stream' average (Table MK-strm-year, Figure MK-stream-year). Furthermore, with the exception of large wood in Abernathy Creek, the detectable trends were weak, failed to indicate separation between treatment and control streams, and did not necessarily suggest in-channel habitat improvement.
 
